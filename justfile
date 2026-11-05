@@ -40,12 +40,12 @@ lint:
 # Format frontend files and Rust code.
 fmt:
     pnpm exec prettier --write .
-    cargo fmt --manifest-path src-tauri/Cargo.toml
+    cargo +nightly fmt --manifest-path src-tauri/Cargo.toml
 
 # Check formatting without modifying files.
 fmt-check:
     pnpm exec prettier --check .
-    cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+    cargo +nightly fmt --manifest-path src-tauri/Cargo.toml -- --check
 
 # Check the Rust application without producing an executable.
 rust-check:
