@@ -59,5 +59,9 @@ rust-test:
 clippy:
     cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
 
+# Check Rust dependencies for advisories, licenses, bans, and sources.
+deny:
+    cargo deny --manifest-path src-tauri/Cargo.toml check
+
 # Run static checks without modifying files.
 check: typecheck lint fmt-check rust-check
