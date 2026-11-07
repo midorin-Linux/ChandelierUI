@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "chandelier-ui",
+  "productName": "Chandelier UI",
   "version": "0.1.0",
   "identifier": "me.suwako.chandelier-ui",
   "build": {
@@ -12,13 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "chandelier-ui",
-        "width": 800,
-        "height": 600
+        "title": "Chandelier UI",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 760,
+        "minHeight": 560
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost; style-src 'self' 'unsafe-inline'; font-src 'self'"
     }
   },
   "bundle": {

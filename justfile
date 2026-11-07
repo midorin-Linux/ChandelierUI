@@ -37,27 +37,31 @@ typecheck:
 lint:
     pnpm exec eslint src
 
+# Run frontend state-transition assertions without a test-framework dependency.
+web-test:
+    pnpm test
+
 # Format frontend files and Rust code.
 fmt:
     pnpm exec prettier --write .
-    cargo +nightly fmt --manifest-path src-tauri/Cargo.toml
+    cargo +nightly fmt --manifest-path src-tauri/Cargo.toml --all
 
 # Check formatting without modifying files.
 fmt-check:
     pnpm exec prettier --check .
-    cargo +nightly fmt --manifest-path src-tauri/Cargo.toml -- --check
+    cargo +nightly fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
-# Check the Rust application without producing an executable.
+# Check all Rust workspace crates without producing an executable.
 rust-check:
-    cargo check --manifest-path src-tauri/Cargo.toml --locked
+    cargo check --manifest-path src-tauri/Cargo.toml --workspace --locked
 
 # Run Rust tests.
 rust-test:
-    cargo test --manifest-path src-tauri/Cargo.toml --locked
+    cargo test --manifest-path src-tauri/Cargo.toml --workspace --locked
 
 # Run Clippy and treat warnings as errors.
 clippy:
-    cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+    cargo clippy --manifest-path src-tauri/Cargo.toml --workspace --locked --all-targets -- -D warnings
 
 # Check Rust dependencies for advisories, licenses, bans, and sources.
 deny:
