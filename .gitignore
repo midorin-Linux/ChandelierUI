@@ -24,4 +24,5 @@ dist-ssr
 *.sw?
 
 # Working directory
-src-old/*
+src-old
+src-tauri-old
