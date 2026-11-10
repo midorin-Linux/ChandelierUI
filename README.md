@@ -23,6 +23,8 @@ pnpm tauri dev
 
 ## 開発・検証
 
+`@/` はプロジェクトルートを指します。Viteは `resolve.tsconfigPaths` で `tsconfig.json` のパスマッピングを共有します。
+
 ```
 pnpm build
 pnpm exec eslint src
