@@ -5,7 +5,6 @@ import { Analysis } from "@/src/components/Analysis"
 import { ChatUI } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
 import { ProviderSettings } from "@/src/components/ProviderSettings"
-import { ThemeMenu } from "@/src/components/ThemeMenu"
 import { useModels } from "@/src/hooks/useModels"
 import { emptyMetrics } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
@@ -26,6 +25,7 @@ import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
   const [providerUrl, setProviderUrl] = useState("")
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [providerUrlInput, setProviderUrlInput] = useState("")
   const {
     models,
@@ -141,15 +141,14 @@ function App() {
     <>
       <ThemeProvider defaultTheme="system">
         <SidebarProvider>
-          <AppSidebar />
+          <AppSidebar onOpenSettings={() => setSettingsOpen(true)} />
           <div className="flex h-screen min-w-0 flex-1 justify-center">
             <div className="flex min-h-0 w-full flex-col">
-              <div className="flex shrink-0 justify-between px-4 py-2 border-b">
-                <div className="flex items-center gap-2">
-                  <ThemeMenu />
-                </div>
+              <div className="flex shrink-0 justify-end px-4 py-2 border-b">
                 <div className="flex gap-2">
                   <ProviderSettings
+                    open={settingsOpen}
+                    onOpenChange={setSettingsOpen}
                     providerUrl={providerUrl}
                     setProviderUrl={setProviderUrl}
                     providerUrlInput={providerUrlInput}

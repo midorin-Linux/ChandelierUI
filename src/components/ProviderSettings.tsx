@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { RotateCcw } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -16,7 +15,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/src/components/ui/dialog"
 import { Field, FieldLabel } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
@@ -24,6 +22,8 @@ import { isSubmitEnter } from "@/src/lib/utils"
 import type { ApiModel } from "@/src/types/chat"
 
 export function ProviderSettings({
+  open,
+  onOpenChange,
   providerUrl,
   setProviderUrl,
   providerUrlInput,
@@ -35,6 +35,8 @@ export function ProviderSettings({
   modelsStatus,
   onRefreshModels,
 }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   providerUrl: string
   setProviderUrl: (url: string) => void
   providerUrlInput: string
@@ -46,7 +48,6 @@ export function ProviderSettings({
   modelsStatus: string
   onRefreshModels: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const canContinue = !modelsLoading && !!selectedModel
 
   function refreshModels() {
@@ -57,10 +58,7 @@ export function ProviderSettings({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline">Provider settings</Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         aria-describedby="provider-description"
         className="sm:max-w-md"
