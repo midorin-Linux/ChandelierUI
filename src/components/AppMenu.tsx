@@ -25,7 +25,7 @@ export function AppMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-36">
+      <DropdownMenuContent align="start" className="min-w-48">
         <DropdownMenuGroup>
           <DropdownMenuItem onSelect={onOpenSettings}>Settings</DropdownMenuItem>
         </DropdownMenuGroup>
@@ -41,7 +41,11 @@ export function AppMenu({
               }}
             >
               {(["system", "light", "dark"] as const).map((value) => (
-                <DropdownMenuRadioItem key={value} value={value}>
+                <DropdownMenuRadioItem
+                  key={value}
+                  value={value}
+                  onSelect={(event) => event.preventDefault()}
+                >
                   {value}
                 </DropdownMenuRadioItem>
               ))}
