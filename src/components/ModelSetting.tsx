@@ -39,7 +39,7 @@ export function ModelSetting({
   onSystemPromptChange,
 }: ModelSettingProps) {
   return (
-    <DialogContent className="aspect-4/3 w-[calc(100%-2rem)] max-w-5xl">
+    <DialogContent className="flex aspect-4/3 w-[min(64rem,calc(100%-2rem),calc((100dvh-2rem)*4/3))] flex-col overflow-hidden sm:max-w-none">
       <header className="border-b px-4 py-4 pr-14">
         <DialogTitle className="text-lg font-semibold">
           Select model

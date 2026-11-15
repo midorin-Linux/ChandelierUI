@@ -28,7 +28,7 @@ export function MessageBox({
   }
 
   return (
-    <div className="w-full shrink-0 p-4">
+    <div className="w-full shrink-0 bg-background pb-4">
       <FieldGroup>
         <Field className="flex flex-col gap-1">
           <div className="flex min-w-0">

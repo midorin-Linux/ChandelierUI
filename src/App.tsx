@@ -116,8 +116,8 @@ function App() {
 
   return (
     <>
-      <div className="flex justify-center h-screen">
-        <div className="flex min-h-0 flex-col max-w-4xl w-full border-x">
+      <div className="flex h-screen w-screen justify-center">
+        <div className="flex min-h-0 w-full flex-col">
           <div className="flex shrink-0 justify-end gap-2 px-4 py-2 border-b">
             <ProviderSettings
               providerUrl={providerUrl}
@@ -137,27 +137,44 @@ function App() {
               isPending={isPending}
             />
           </div>
-          <ChatUI
-            messages={messages}
-            isPending={isPending}
-            error={error}
-            canSend={canSend}
-            onRetry={() => void requestCompletion(messages, true)}
-          />
-          <MessageBox
-            models={models}
-            modelsLoading={modelsLoading}
-            modelsStatus={modelsStatus}
-            onRefreshModels={refreshModels}
-            selectedModel={selectedModel}
-            onModelChange={selectModel}
-            selectedEffort={selectedEffort}
-            onEffortChange={setSelectedEffort}
-            systemPrompt={systemPrompt}
-            onSystemPromptChange={setSystemPrompt}
-            onSend={sendMessage}
-            isPending={isPending}
-          />
+          <div className="relative flex min-h-0 w-screen flex-1 flex-col">
+            <ChatUI
+              messages={messages}
+              isPending={isPending}
+              error={error}
+              canSend={canSend}
+              onRetry={() => void requestCompletion(messages, true)}
+            />
+            <div
+              className="absolute bottom-0 left-1/2 w-full max-w-4xl -translate-x-1/2 border-x border-transparent"
+              ref={(node) => {
+                if (!node) return
+                const observer = new ResizeObserver(() => {
+                  node.parentElement?.style.setProperty(
+                    "--composer-height",
+                    `${node.offsetHeight}px`
+                  )
+                })
+                observer.observe(node)
+                return () => observer.disconnect()
+              }}
+            >
+              <MessageBox
+                models={models}
+                modelsLoading={modelsLoading}
+                modelsStatus={modelsStatus}
+                onRefreshModels={refreshModels}
+                selectedModel={selectedModel}
+                onModelChange={selectModel}
+                selectedEffort={selectedEffort}
+                onEffortChange={setSelectedEffort}
+                systemPrompt={systemPrompt}
+                onSystemPromptChange={setSystemPrompt}
+                onSend={sendMessage}
+                isPending={isPending}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </>

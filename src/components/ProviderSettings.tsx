@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { RotateCcw } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -9,8 +10,8 @@ import {
   ComboboxList,
 } from "@/src/components/ui/combobox"
 import {
-  Dialog,
-  DialogContent,
+  Dialog, DialogClose,
+  DialogContent, DialogFooter, DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/src/components/ui/dialog"
@@ -42,6 +43,9 @@ export function ProviderSettings({
   modelsStatus: string
   onRefreshModels: () => void
 }) {
+  const [open, setOpen] = useState(false)
+  const canClose = !modelsLoading && !!selectedModel
+
   function refreshModels() {
     const url = providerUrlInput.trim()
     if (!url) return
@@ -50,16 +54,24 @@ export function ProviderSettings({
   }
 
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen || canClose) setOpen(nextOpen)
+      }}
+    >
       <DialogTrigger asChild>
         <Button variant="outline">Provider settings</Button>
       </DialogTrigger>
-      <DialogContent aria-describedby="provider-description">
-        <header className="border-b px-4 py-4 pr-14">
+      <DialogContent
+        aria-describedby="provider-description"
+        className="sm:max-w-md"
+      >
+        <DialogHeader className="border-b px-4 py-4 pr-14">
           <DialogTitle className="text-lg font-semibold">
             Provider settings
           </DialogTitle>
-        </header>
+        </DialogHeader>
         <div className="flex flex-col gap-4 overflow-y-auto p-4">
           <p
             id="provider-description"
@@ -127,6 +139,18 @@ export function ProviderSettings({
             {modelsStatus}
           </p>
         </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button
+              type="button"
+              variant="default"
+              className="w-full shrink-0"
+              disabled={!canClose}
+            >
+              Continue
+            </Button>
+          </DialogClose>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
