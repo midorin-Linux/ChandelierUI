@@ -121,14 +121,14 @@ function App() {
 
   function sendMessage(content: string) {
     if (inFlight.current || !content.trim()) return false
+    const history: ChatMessage[] = [...messages, { role: "user", content }]
+    setMessages(history)
     if (!canSend) {
       setError(
         `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter or Refresh, and select a model.`
       )
-      return false
+      return true
     }
-    const history: ChatMessage[] = [...messages, { role: "user", content }]
-    setMessages(history)
     void requestCompletion(history)
     return true
   }

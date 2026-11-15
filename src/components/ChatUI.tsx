@@ -87,6 +87,11 @@ export function ChatUI({
               Your messages are kept. Check the local server, provider URL, model
               ID, and effort support, then retry with the current settings.
             </p>
+            {!canSend && (
+              <p role="status" className="text-sm text-muted-foreground">
+                Open Provider settings and select a model to enable Retry.
+              </p>
+            )}
             <Button
               variant="outline"
               disabled={
