@@ -4,7 +4,8 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 import { Analysis } from "@/src/components/Analysis"
 import { ChatUI } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
-import { ProviderSettings } from "@/src/components/ProviderSettings"
+import { AppSetting, type SettingsTab } from "@/src/components/AppSetting"
+import { Dialog } from "@/src/components/ui/dialog"
 import { useModels } from "@/src/hooks/useModels"
 import { emptyMetrics } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
@@ -25,7 +26,8 @@ import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
   const [providerUrl, setProviderUrl] = useState("")
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
   const [providerUrlInput, setProviderUrlInput] = useState("")
   const {
     models,
@@ -49,6 +51,11 @@ function App() {
   const attemptId = useRef(0)
   const inFlight = useRef(false)
   const canSend = !modelsLoading && selectedModel !== ""
+
+  function openProviderSettings() {
+    setSettingsTab("provider")
+    setAppSettingsOpen(true)
+  }
 
   function buildPayload(history: ChatMessage[]): ProviderChatRequest {
     return {
@@ -141,25 +148,27 @@ function App() {
     <>
       <ThemeProvider defaultTheme="system">
         <SidebarProvider>
-          <AppSidebar onOpenSettings={() => setSettingsOpen(true)} />
+          <AppSidebar onOpenSettings={() => setAppSettingsOpen(true)} />
+          <Dialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen}>
+            <AppSetting
+              tab={settingsTab}
+              onTabChange={setSettingsTab}
+              provider={{
+                providerUrl,
+                setProviderUrl,
+                providerUrlInput,
+                setProviderUrlInput,
+                models,
+                modelsLoading,
+                modelsStatus,
+                onRefreshModels: refreshModels,
+              }}
+            />
+          </Dialog>
           <div className="flex h-screen min-w-0 flex-1 justify-center">
             <div className="flex min-h-0 w-full flex-col">
               <div className="flex shrink-0 justify-end px-4 py-2 border-b">
                 <div className="flex gap-2">
-                  <ProviderSettings
-                    open={settingsOpen}
-                    onOpenChange={setSettingsOpen}
-                    providerUrl={providerUrl}
-                    setProviderUrl={setProviderUrl}
-                    providerUrlInput={providerUrlInput}
-                    setProviderUrlInput={setProviderUrlInput}
-                    models={models}
-                    selectedModel={selectedModel}
-                    onModelChange={selectModel}
-                    modelsLoading={modelsLoading}
-                    modelsStatus={modelsStatus}
-                    onRefreshModels={refreshModels}
-                  />
                   <Analysis
                     payload={buildPayload(messages)}
                     attempts={attempts}
@@ -195,7 +204,7 @@ function App() {
                     modelsLoading={modelsLoading}
                     modelsStatus={modelsStatus}
                     onRefreshModels={refreshModels}
-                    onOpenProviderSettings={() => setSettingsOpen(true)}
+                    onOpenProviderSettings={openProviderSettings}
                     selectedModel={selectedModel}
                     onModelChange={selectModel}
                     selectedEffort={selectedEffort}

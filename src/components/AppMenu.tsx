@@ -27,7 +27,9 @@ export function AppMenu({
       <DropdownMenuTrigger asChild>{children}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="min-w-48">
         <DropdownMenuGroup>
-          <DropdownMenuItem onSelect={onOpenSettings}>Settings</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenSettings}>
+            Settings
+          </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuSub>
