@@ -5,6 +5,7 @@ import { Analysis } from "@/src/components/Analysis"
 import { ChatUI } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
 import { ProviderSettings } from "@/src/components/ProviderSettings"
+import { ThemeMenu } from "@/src/components/ThemeMenu"
 import { useModels } from "@/src/hooks/useModels"
 import { emptyMetrics } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
@@ -139,24 +140,27 @@ function App() {
       <ThemeProvider defaultTheme="system">
         <div className="flex h-screen w-screen justify-center">
           <div className="flex min-h-0 w-full flex-col">
-            <div className="flex shrink-0 justify-end gap-2 px-4 py-2 border-b">
-              <ProviderSettings
-                providerUrl={providerUrl}
-                setProviderUrl={setProviderUrl}
-                providerUrlInput={providerUrlInput}
-                setProviderUrlInput={setProviderUrlInput}
-                models={models}
-                selectedModel={selectedModel}
-                onModelChange={selectModel}
-                modelsLoading={modelsLoading}
-                modelsStatus={modelsStatus}
-                onRefreshModels={refreshModels}
-              />
-              <Analysis
-                payload={buildPayload(messages)}
-                attempts={attempts}
-                isPending={isPending}
-              />
+            <div className="flex shrink-0 justify-between px-4 py-2 border-b">
+              <ThemeMenu />
+              <div className="flex gap-2">
+                <ProviderSettings
+                  providerUrl={providerUrl}
+                  setProviderUrl={setProviderUrl}
+                  providerUrlInput={providerUrlInput}
+                  setProviderUrlInput={setProviderUrlInput}
+                  models={models}
+                  selectedModel={selectedModel}
+                  onModelChange={selectModel}
+                  modelsLoading={modelsLoading}
+                  modelsStatus={modelsStatus}
+                  onRefreshModels={refreshModels}
+                />
+                <Analysis
+                  payload={buildPayload(messages)}
+                  attempts={attempts}
+                  isPending={isPending}
+                />
+              </div>
             </div>
             <div className="relative flex min-h-0 w-screen flex-1 flex-col">
               <ChatUI
