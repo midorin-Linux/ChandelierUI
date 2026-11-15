@@ -1,15 +1,28 @@
 import { useEffect, useRef } from "react"
+import { BrainIcon } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
+import { MarkdownRenderer } from "@/src/components/MarkdownRenderer"
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from "@/src/components/ui/trace"
 import type { ChatMessage } from "@/src/types/chat"
 
 export function ChatUI({
   messages,
+  partialMessage,
   isPending,
   error,
   canSend,
   onRetry,
 }: {
   messages: readonly ChatMessage[]
+  partialMessage: ChatMessage | null
   isPending: boolean
   error: string | null
   canSend: boolean
@@ -18,7 +31,7 @@ export function ChatUI({
   const messageEnd = useRef<HTMLDivElement>(null)
   useEffect(() => {
     messageEnd.current?.scrollIntoView({ block: "nearest" })
-  }, [messages, isPending, error])
+  }, [messages, partialMessage, isPending, error])
   return (
     <div
       className="min-h-0 w-screen flex-1 overflow-y-auto scroll-pb-[var(--composer-height,0px)]"
@@ -34,9 +47,7 @@ export function ChatUI({
         ) : (
           messages.map((message, index) =>
             message.role === "assistant" ? (
-              <p key={index} className="mb-4 whitespace-pre-wrap wrap-break-word">
-                {message.content}
-              </p>
+              <AssistantMessage key={index} message={message} />
             ) : (
               <article
                 key={index}
@@ -52,9 +63,16 @@ export function ChatUI({
             )
           )
         )}
+        {partialMessage && (
+          <AssistantMessage
+            message={partialMessage}
+            isPending={isPending}
+            failed={error !== null}
+          />
+        )}
         {isPending && (
           <p role="status" className="text-sm text-muted-foreground">
-            Waiting for the model…
+            {partialMessage ? "Receiving response…" : "Waiting for the model…"}
           </p>
         )}
         {error !== null && (
@@ -85,5 +103,56 @@ export function ChatUI({
         <div ref={messageEnd} />
       </div>
     </div>
+  )
+}
+
+function AssistantMessage({
+  message,
+  isPending = false,
+  failed = false,
+}: {
+  message: ChatMessage
+  isPending?: boolean
+  failed?: boolean
+}) {
+  return (
+    <article
+      aria-label={failed ? "Incomplete assistant response" : "Assistant response"}
+      className="mb-4 flex flex-col gap-3"
+    >
+      {message.reasoning && (
+        <Trace>
+          <TraceCollapsible defaultOpen>
+            <TraceCollapsibleTrigger>
+              <TraceLine
+                status={failed ? "error" : isPending ? "running" : undefined}
+              >
+                <TraceIcon>
+                  <BrainIcon />
+                </TraceIcon>
+                <TraceTitle>
+                  {failed
+                    ? "Thinking interrupted"
+                    : isPending
+                      ? "Thinking…"
+                      : "Thinking"}
+                </TraceTitle>
+              </TraceLine>
+            </TraceCollapsibleTrigger>
+            <TraceCollapsibleContent>
+              <p className="whitespace-pre-wrap wrap-break-word">
+                {message.reasoning}
+              </p>
+            </TraceCollapsibleContent>
+          </TraceCollapsible>
+        </Trace>
+      )}
+      {message.content && <MarkdownRenderer content={message.content} />}
+      {failed && (
+        <p className="text-sm text-muted-foreground">
+          Incomplete response. This output is not included when you retry.
+        </p>
+      )}
+    </article>
   )
 }

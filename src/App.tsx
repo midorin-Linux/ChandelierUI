@@ -1,18 +1,24 @@
 import "./App.css"
-import { useRef, useState } from "react"
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import { useReducer, useRef, useState } from "react"
+import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 import { Analysis } from "@/src/components/Analysis"
 import { ChatUI } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
 import { ProviderSettings } from "@/src/components/ProviderSettings"
 import { useModels } from "@/src/hooks/useModels"
 import { emptyMetrics } from "@/src/lib/analysis"
+import { completionStream } from "@/src/lib/completionStream"
 import { errorMessage } from "@/src/lib/utils"
 import type {
   CompletionAttempt,
   MeasuredCompletion,
 } from "@/src/types/analysis"
-import type { ChatMessage, Effort, ProviderChatRequest } from "@/src/types/chat"
+import type {
+  ChatMessage,
+  CompletionDelta,
+  Effort,
+  ProviderChatRequest,
+} from "@/src/types/chat"
 
 function App() {
   const [providerUrl, setProviderUrl] = useState("")
@@ -28,7 +34,12 @@ function App() {
   const [selectedEffort, setSelectedEffort] = useState<Effort>("medium")
   const [systemPrompt, setSystemPrompt] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [isPending, setIsPending] = useState(false)
+  const [stream, dispatchStream] = useReducer(completionStream, {
+    attemptId: 0,
+    isPending: false,
+    message: null,
+  })
+  const { isPending } = stream
   const [error, setError] = useState<string | null>(null)
   const [attempts, setAttempts] = useState<CompletionAttempt[]>([])
   const attemptId = useRef(0)
@@ -45,7 +56,7 @@ function App() {
           ...(systemPrompt.trim()
             ? [{ role: "system" as const, content: systemPrompt }]
             : []),
-          ...history,
+          ...history.map(({ role, content }) => ({ role, content })),
         ],
       },
     }
@@ -54,26 +65,34 @@ function App() {
   async function requestCompletion(history: ChatMessage[], retry = false) {
     if (inFlight.current || !canSend) return
     inFlight.current = true
-    setIsPending(true)
     setError(null)
     const requestPayload = buildPayload(history)
     const startedAt = new Date().toISOString()
     const started = performance.now()
     const id = ++attemptId.current
+    dispatchStream({ type: "start", attemptId: id })
     const contextLength =
       models.find((model) => model.id === selectedModel)?.context_length ?? null
     let result: MeasuredCompletion
+    let succeeded = false
     try {
       if (!isTauri()) {
         throw new Error(
           "Sending messages requires the Tauri desktop app. Open the desktop app instead of the browser preview."
         )
       }
+      const onEvent = new Channel<CompletionDelta>((delta) => {
+        dispatchStream({ type: "delta", attemptId: id, delta })
+      })
       result = await invoke<MeasuredCompletion>("chat_completion", {
         payload: requestPayload,
+        onEvent,
       })
       if (result.error) setError(result.error)
-      else if (result.message) setMessages([...history, result.message])
+      else if (result.message) {
+        succeeded = true
+        setMessages([...history, result.message])
+      }
     } catch (cause) {
       const message = errorMessage(cause)
       setError(message)
@@ -84,7 +103,7 @@ function App() {
       }
     } finally {
       inFlight.current = false
-      setIsPending(false)
+      dispatchStream({ type: "finish", attemptId: id, succeeded })
     }
     setAttempts((current) => [
       ...current,
@@ -140,6 +159,7 @@ function App() {
           <div className="relative flex min-h-0 w-screen flex-1 flex-col">
             <ChatUI
               messages={messages}
+              partialMessage={stream.message}
               isPending={isPending}
               error={error}
               canSend={canSend}

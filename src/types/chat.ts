@@ -9,11 +9,17 @@ export interface ApiModel {
 export interface ChatMessage {
   role: "system" | "user" | "assistant"
   content: string
+  reasoning?: string
+}
+
+export interface CompletionDelta {
+  content: string
+  reasoning: string
 }
 
 export interface ChatCompletionRequest {
   model: string
-  messages: ChatMessage[]
+  messages: Pick<ChatMessage, "role" | "content">[]
   // The backend maps off to none and max to xhigh on the OpenAI wire.
   reasoning_effort: Effort
 }

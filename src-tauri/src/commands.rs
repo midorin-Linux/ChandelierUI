@@ -2,7 +2,7 @@ use std::{borrow::Cow, net::IpAddr, time::{Duration, Instant}};
 
 use reqwest::{Client, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{ipc::Channel, State};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -16,6 +16,14 @@ pub enum Role {
 pub struct Message {
     role: Role,
     content: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    reasoning: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct CompletionDelta {
+    content: String,
+    reasoning: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -80,10 +88,23 @@ pub struct ChatPayload {
 #[derive(Serialize)]
 struct WireRequest<'a> {
     model: &'a str,
+    #[serde(serialize_with = "serialize_wire_messages")]
     messages: &'a [Message],
     reasoning_effort: &'a str,
     stream: bool,
     stream_options: StreamOptions,
+}
+
+fn serialize_wire_messages<S: serde::Serializer>(messages: &[Message], serializer: S) -> Result<S::Ok, S::Error> {
+    #[derive(Serialize)]
+    struct WireMessage<'a> {
+        role: &'a Role,
+        content: &'a str,
+    }
+    serializer.collect_seq(messages.iter().map(|message| WireMessage {
+        role: &message.role,
+        content: &message.content,
+    }))
 }
 
 #[derive(Serialize)]
@@ -188,6 +209,10 @@ struct Delta<'a> {
     role: Option<StreamText<'a>>,
     #[serde(borrow)]
     content: Option<StreamText<'a>>,
+    #[serde(borrow)]
+    reasoning_content: Option<StreamText<'a>>,
+    #[serde(borrow)]
+    reasoning: Option<StreamText<'a>>,
     #[serde(borrow)]
     refusal: Option<StreamText<'a>>,
 }
@@ -305,12 +330,13 @@ impl ChunkIntervals {
 #[derive(Default)]
 struct CompletionStream {
     text: String,
+    reasoning: String,
     metrics: CompletionMetrics,
     intervals: ChunkIntervals,
 }
 
 impl CompletionStream {
-    fn event(&mut self, data: &[u8], elapsed_ms: f64) -> Result<bool, String> {
+    fn event(&mut self, data: &[u8], elapsed_ms: f64, on_event: &mut impl FnMut(CompletionDelta) -> Result<(), String>) -> Result<bool, String> {
         if data == b"[DONE]" {
             return Ok(true);
         }
@@ -356,10 +382,16 @@ impl CompletionStream {
             if self.metrics.finish_reason.is_some() {
                 return Err("Chat provider returned a choice after its finish reason.".into());
             }
-            if let Some(content) = choice.delta.content.filter(|content| !content.is_empty()) {
+            let content = choice.delta.content.as_deref().unwrap_or("");
+            let reasoning = choice.delta.reasoning_content.as_deref()
+                .filter(|text| !text.is_empty())
+                .or(choice.delta.reasoning.as_deref()).unwrap_or("");
+            if !content.is_empty() || !reasoning.is_empty() {
                 self.metrics.ttft_ms.get_or_insert(elapsed_ms);
                 self.intervals.record(elapsed_ms);
-                self.text.push_str(&content);
+                self.text.push_str(content);
+                self.reasoning.push_str(reasoning);
+                on_event(CompletionDelta { content: content.into(), reasoning: reasoning.into() })?;
             }
             if let Some(reason) = choice.finish_reason {
                 if reason.trim().is_empty() {
@@ -403,7 +435,9 @@ impl CompletionStream {
                 Some((self.intervals.m2 / self.intervals.count as f64).max(0.0).sqrt());
         }
         MeasuredCompletion {
-            message: (!self.text.is_empty()).then_some(Message { role: Role::Assistant, content: self.text }),
+            message: (!self.text.is_empty() || !self.reasoning.is_empty()).then_some(Message {
+                role: Role::Assistant, content: self.text, reasoning: self.reasoning,
+            }),
             error,
             metrics: self.metrics,
         }
@@ -452,7 +486,7 @@ fn endpoint(base: &str, suffix: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-async fn complete(client: &Client, payload: ChatPayload) -> MeasuredCompletion {
+async fn complete(client: &Client, payload: ChatPayload, mut on_event: impl FnMut(CompletionDelta) -> Result<(), String>) -> MeasuredCompletion {
     let url = match endpoint(&payload.provider.base_url, "chat/completions") {
         Ok(url) => url,
         Err(error) => return MeasuredCompletion { error: Some(error), ..Default::default() },
@@ -495,7 +529,7 @@ async fn complete(client: &Client, payload: ChatPayload) -> MeasuredCompletion {
                 let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
                 stream.metrics.ttfb_ms.get_or_insert(elapsed_ms);
                 if !status.is_success() { continue; }
-                match decoder.feed(&bytes, |data| stream.event(data, elapsed_ms)) {
+                match decoder.feed(&bytes, |data| stream.event(data, elapsed_ms, &mut on_event)) {
                     Ok(true) => break (elapsed_ms, stream.validate().err()),
                     Ok(false) => {}
                     Err(error) => break (elapsed_ms, Some(error)),
@@ -553,8 +587,11 @@ async fn fetch_models(client: &Client, provider: Provider) -> Result<Vec<Model>,
 pub async fn chat_completion(
     client: State<'_, Client>,
     payload: ChatPayload,
+    on_event: Channel<CompletionDelta>,
 ) -> Result<MeasuredCompletion, String> {
-    Ok(complete(client.inner(), payload).await)
+    Ok(complete(client.inner(), payload, |delta| {
+        on_event.send(delta).map_err(|_| "Could not deliver the chat response to the UI.".into())
+    }).await)
 }
 
 #[tauri::command]
@@ -641,6 +678,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delivers_deltas_before_http_completion() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/v1", listener.local_addr().unwrap());
+        let (emitted, observed) = tokio::sync::oneshot::channel();
+        let first = event(serde_json::json!({"reasoning_content":"Thinking"}), None);
+        let last = completion("Answer");
+        let task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 4096];
+            loop {
+                let count = socket.read(&mut buffer).await.unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]);
+                    let length: usize = headers.lines().find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse().unwrap())
+                    }).unwrap_or(0);
+                    if request.len() >= end + 4 + length { break; }
+                }
+            }
+            socket.write_all(format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{first}",
+                first.len() + last.len(),
+            ).as_bytes()).await.unwrap();
+            observed.await.unwrap();
+            socket.write_all(last.as_bytes()).await.unwrap();
+        });
+        let mut emitted = Some(emitted);
+        let mut deltas = Vec::new();
+        let result = tokio::time::timeout(Duration::from_secs(5), complete(
+            &http_client().unwrap(), payload(base, "off"), |delta| {
+                if delta.reasoning == "Thinking" {
+                    emitted.take().unwrap().send(()).unwrap();
+                }
+                deltas.push(delta);
+                Ok(())
+            },
+        )).await.unwrap();
+        task.await.unwrap();
+        assert!(result.error.is_none(), "{:?}", result.error);
+        assert_eq!(deltas, vec![
+            CompletionDelta { content: "".into(), reasoning: "Thinking".into() },
+            CompletionDelta { content: "Answer".into(), reasoning: "".into() },
+        ]);
+        let reply = result.message.unwrap();
+        assert_eq!(reply.content, "Answer");
+        assert_eq!(reply.reasoning, "Thinking");
+    }
+
+    #[test]
+    fn streams_fragmented_reasoning_and_counts_each_event_once() {
+        let mut decoder = SseDecoder::default();
+        let mut stream = CompletionStream::default();
+        let mut deltas = Vec::new();
+        for (elapsed, delta, finish) in [
+            (5.0, serde_json::json!({"role":"assistant","content":""}), None),
+            (10.0, serde_json::json!({"reasoning_content":"Ré"}), None),
+            (30.0, serde_json::json!({"content":"Hi","reasoning":"ason"}), None),
+            (40.0, serde_json::json!({}), Some("stop")),
+        ] {
+            for byte in event(delta, finish).replace('\n', "\r\n").as_bytes() {
+                assert!(!decoder.feed(std::slice::from_ref(byte), |data| stream.event(
+                    data, elapsed, &mut |delta| { deltas.push(delta); Ok(()) },
+                )).unwrap());
+            }
+        }
+        assert_eq!(deltas, vec![
+            CompletionDelta { content: "".into(), reasoning: "Ré".into() },
+            CompletionDelta { content: "Hi".into(), reasoning: "ason".into() },
+        ]);
+        assert_eq!(stream.metrics.ttft_ms, Some(10.0));
+        assert_eq!(stream.intervals.count, 1);
+        assert_eq!(stream.intervals.mean, 20.0);
+        assert!(stream.validate().is_ok());
+        let reply = stream.finish(50.0, None).message.unwrap();
+        assert_eq!(reply.reasoning, "Réason");
+        assert_eq!(serde_json::to_value(reply).unwrap()["reasoning"], "Réason");
+    }
+
+    #[test]
+    fn retains_emitted_deltas_on_stream_errors() {
+        for (tail, expected) in [
+            ("data: broken\n\n".into(), "invalid JSON"),
+            ("data: {\"error\":{\"message\":\"secret\"}}\n\n".into(), "stream error"),
+            (event(serde_json::json!({"refusal":"secret","content":"not emitted"}), None), "refused"),
+            ("data: {\"choices\":".into(), "truncated SSE"),
+            (String::new(), "missing finish_reason"),
+        ] {
+            let mut decoder = SseDecoder::default();
+            let mut stream = CompletionStream::default();
+            let mut deltas = Vec::new();
+            let mut emit = |delta| { deltas.push(delta); Ok(()) };
+            decoder.feed(event(serde_json::json!({"content":"partial","reasoning":"why"}), None).as_bytes(),
+                |data| stream.event(data, 10.0, &mut emit)).unwrap();
+            let error = decoder.feed(tail.as_bytes(), |data| stream.event(data, 20.0, &mut emit))
+                .and_then(|_| decoder.finish())
+                .and_then(|()| stream.validate()).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+            assert_eq!(deltas, vec![CompletionDelta { content: "partial".into(), reasoning: "why".into() }]);
+            let reply = stream.finish(30.0, Some(error)).message.unwrap();
+            assert_eq!(reply.content, "partial");
+            assert_eq!(reply.reasoning, "why");
+        }
+    }
+
+    #[test]
+    fn omits_reasoning_from_request_messages_and_empty_replies() {
+        let request = ChatRequest {
+            model: "local".into(),
+            messages: vec![Message { role: Role::Assistant, content: "Hi".into(), reasoning: "private metadata".into() }],
+            reasoning_effort: ReasoningEffort::Off,
+        };
+        let wire = serde_json::to_value(WireRequest {
+            model: &request.model, messages: &request.messages,
+            reasoning_effort: "none", stream: true, stream_options: StreamOptions { include_usage: true },
+        }).unwrap();
+        assert_eq!(wire["messages"], serde_json::json!([{"role":"assistant","content":"Hi"}]));
+        let reply = Message { role: Role::Assistant, content: "Hi".into(), reasoning: String::new() };
+        assert!(serde_json::to_value(reply).unwrap().get("reasoning").is_none());
+    }
+
+    #[tokio::test]
     async fn posts_completion_and_maps_effort() {
         let client = http_client().unwrap();
         for (effort, wire) in [
@@ -656,7 +818,7 @@ mod tests {
                 &completion("Hi"),
             )
             .await;
-            let result = complete(&client, payload(base, effort)).await;
+            let result = complete(&client, payload(base, effort), |_| Ok(())).await;
             assert!(result.error.is_none(), "{:?}", result.error);
             let reply = result.message.unwrap();
             assert_eq!(result.metrics.http_status, Some(200));
@@ -707,7 +869,7 @@ mod tests {
             ("200 OK", format!("{}data: broken\n\n", event(serde_json::json!({"content":"partial"}), Some("stop"))), "invalid JSON"),
         ] {
             let (base, task) = server(status, &body).await;
-            let result = complete(&client, payload(base, "off")).await;
+            let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
             assert_eq!(result.metrics.http_status, Some(status[..3].parse().unwrap()));
             let error = result.error.unwrap();
             assert!(error.contains(expected), "{error}");
@@ -731,7 +893,7 @@ mod tests {
             (delay, b"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":4,\"total_tokens\":11,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":2}}}\n\n".to_vec()),
             (delay, b"data: [DONE]\n\n".to_vec()),
         ], 0).await;
-        let result = complete(&http_client().unwrap(), payload(base, "off")).await;
+        let result = complete(&http_client().unwrap(), payload(base, "off"), |_| Ok(())).await;
         assert!(result.error.is_none(), "{:?}", result.error);
         assert_eq!(result.message.unwrap().content, "Héllo");
         let metrics = result.metrics;
@@ -764,7 +926,7 @@ mod tests {
         let body = format!("{}data: {{\"usage\":{{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0}}}}\n\n",
             event(serde_json::json!({"content":"Hi"}), Some("length")));
         let (base, task) = server("200 OK", &body).await;
-        let result = complete(&http_client().unwrap(), payload(base, "off")).await;
+        let result = complete(&http_client().unwrap(), payload(base, "off"), |_| Ok(())).await;
         assert!(result.error.is_none(), "{:?}", result.error);
         assert_eq!(result.metrics.finish_reason.as_deref(), Some("length"));
         assert_eq!(result.metrics.input_tokens, Some(0));
@@ -791,7 +953,12 @@ mod tests {
                 (Duration::ZERO, first.as_bytes().to_vec()),
                 (Duration::from_millis(10), tail.to_vec()),
             ], missing_bytes).await;
-            let result = complete(&http_client().unwrap(), payload(base, "off")).await;
+            let mut deltas = Vec::new();
+            let result = complete(&http_client().unwrap(), payload(base, "off"), |delta| {
+                deltas.push(delta);
+                Ok(())
+            }).await;
+            assert_eq!(deltas, vec![CompletionDelta { content: "partial".into(), reasoning: "".into() }]);
             assert!(result.error.is_some());
             assert_eq!(result.message.unwrap().content, "partial");
             assert_eq!(result.metrics.http_status, Some(200));
@@ -810,7 +977,7 @@ mod tests {
             (Duration::from_millis(250), completion("late").into_bytes()),
         ], 0).await;
         let client = Client::builder().timeout(Duration::from_millis(100)).build().unwrap();
-        let result = complete(&client, payload(base, "off")).await;
+        let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
         assert!(result.error.unwrap().contains("timed out"));
         assert!(result.metrics.timed_out);
         assert_eq!(result.metrics.http_status, Some(200));
@@ -820,7 +987,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}/v1", listener.local_addr().unwrap());
         drop(listener);
-        let result = complete(&http_client().unwrap(), payload(base, "off")).await;
+        let result = complete(&http_client().unwrap(), payload(base, "off"), |_| Ok(())).await;
         assert!(result.error.unwrap().contains("Could not reach"));
         assert_eq!(result.metrics.http_status, None);
         assert_eq!(result.metrics.ttfb_ms, None);
@@ -835,7 +1002,7 @@ mod tests {
         let mut stream = CompletionStream::default();
         let mut done = false;
         for byte in body.as_bytes() {
-            done |= decoder.feed(std::slice::from_ref(byte), |data| stream.event(data, 1.0)).unwrap();
+            done |= decoder.feed(std::slice::from_ref(byte), |data| stream.event(data, 1.0, &mut |_| Ok(()))).unwrap();
         }
         assert!(done);
         assert!(stream.validate().is_ok());
@@ -995,7 +1162,7 @@ mod tests {
                 _ => request.request.messages[0].content = " ".into(),
             }
             assert!(
-                complete(&client, request)
+                complete(&client, request, |_| Ok(()))
                     .await
                     .error.unwrap()
                     .contains("nonblank")

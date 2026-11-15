@@ -129,3 +129,67 @@
     @apply font-sans;
   }
 }
+
+/* Markdown rendering. Colors come from the design tokens above, so light/dark
+   switch automatically. */
+.markdown-body {
+  @apply min-w-0 wrap-break-word;
+}
+.markdown-body > * + * {
+  @apply mt-3;
+}
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  @apply font-heading font-semibold;
+}
+.markdown-body h1 { @apply text-xl; }
+.markdown-body h2 { @apply text-lg; }
+.markdown-body h3 { @apply text-base; }
+.markdown-body ul { @apply list-disc pl-6; }
+.markdown-body ol { @apply list-decimal pl-6; }
+.markdown-body li > ul,
+.markdown-body li > ol { @apply mt-1; }
+.markdown-body li.task-list-item { @apply list-none; }
+.markdown-body li.task-list-item > input { @apply mr-2; }
+.markdown-body a { @apply text-primary underline underline-offset-2; }
+.markdown-body blockquote {
+  @apply border-l-2 border-border pl-3 text-muted-foreground;
+}
+.markdown-body hr { @apply border-border; }
+.markdown-body code {
+  @apply bg-muted px-1 font-mono text-[0.9em];
+}
+.markdown-body pre {
+  @apply overflow-x-auto border border-border bg-muted p-3;
+}
+.markdown-body pre code {
+  @apply bg-transparent p-0 text-sm;
+}
+.markdown-table { @apply overflow-x-auto; }
+.markdown-body table { @apply border-collapse text-sm; }
+.markdown-body th,
+.markdown-body td { @apply border border-border px-2 py-1 text-left; }
+.markdown-body th { @apply bg-muted font-medium; }
+[data-slot="markdown-image"] { @apply text-muted-foreground italic; }
+
+/* Syntax highlighting (rehype-highlight/highlight.js class names). */
+.hljs-comment,
+.hljs-quote { @apply text-muted-foreground italic; }
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-type { @apply font-semibold text-primary; }
+.hljs-string,
+.hljs-regexp,
+.hljs-attr,
+.hljs-symbol { @apply text-destructive; }
+.hljs-title,
+.hljs-section,
+.hljs-number,
+.hljs-literal { @apply font-medium text-accent-foreground; }
+.hljs-emphasis { @apply italic; }
+.hljs-strong { @apply font-bold; }
