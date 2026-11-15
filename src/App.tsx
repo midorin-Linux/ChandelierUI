@@ -21,7 +21,7 @@ import type {
   ProviderChatRequest,
 } from "@/src/types/chat"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
-import { SidebarProvider, SidebarTrigger } from "@/src/components/ui/sidebar"
+import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
@@ -146,7 +146,6 @@ function App() {
             <div className="flex min-h-0 w-full flex-col">
               <div className="flex shrink-0 justify-between px-4 py-2 border-b">
                 <div className="flex items-center gap-2">
-                  <SidebarTrigger />
                   <ThemeMenu />
                 </div>
                 <div className="flex gap-2">
