@@ -17,6 +17,11 @@ cargo install just
 
 # If pnpm is not installed (details: https://pnpm.io/installation)
 npx get-pnpm
+
+git clone https://github.com/midorin-Linux/ChandelierUI.git
+cd ChandelierUI
+just install
+just dev run
 ```
 
 ## Basic Operations
