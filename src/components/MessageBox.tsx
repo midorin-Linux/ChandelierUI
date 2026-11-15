@@ -1,43 +1,26 @@
 import { useState } from "react"
-import { Field, FieldGroup } from "@/src/components/ui/field.tsx"
+import { ModelSetting } from "@/src/components/ModelSetting"
+import type { ModelSettingProps } from "@/src/components/ModelSetting"
+import { Button } from "@/src/components/ui/button"
+import { Dialog, DialogTrigger } from "@/src/components/ui/dialog"
+import { Field, FieldGroup } from "@/src/components/ui/field"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
-} from "@/src/components/ui/input-group.tsx"
-import { Dialog, DialogTrigger } from "@/src/components/ui/dialog"
-import { Button } from "@/src/components/ui/button.tsx"
-import { ModelSetting } from "@/src/components/ModelSetting"
-import type { ApiModel, Effort } from "@/src/types/chat"
+} from "@/src/components/ui/input-group"
+import { isSubmitEnter } from "@/src/lib/utils"
 
 export function MessageBox({
-  models,
-  modelsLoading,
-  modelsStatus,
-  onRefreshModels,
-  selectedModel,
-  onModelChange,
-  selectedEffort,
-  onEffortChange,
-  systemPrompt,
-  onSystemPromptChange,
   onSend,
   isPending,
-}: {
-  models: ApiModel[]
-  modelsLoading: boolean
-  modelsStatus: string
-  onRefreshModels: () => void
-  selectedModel: string
-  onModelChange: (model: string) => void
-  selectedEffort: Effort
-  onEffortChange: (effort: Effort) => void
-  systemPrompt: string
-  onSystemPromptChange: (prompt: string) => void
+  ...settings
+}: ModelSettingProps & {
   onSend: (content: string) => boolean
   isPending: boolean
 }) {
+  const { selectedEffort, selectedModel } = settings
   const [draft, setDraft] = useState("")
   function sendMessage() {
     if (isPending || !draft.trim()) return
@@ -60,18 +43,7 @@ export function MessageBox({
                   </span>
                 </Button>
               </DialogTrigger>
-              <ModelSetting
-                models={models}
-                modelsLoading={modelsLoading}
-                modelsStatus={modelsStatus}
-                onRefreshModels={onRefreshModels}
-                selectedModel={selectedModel}
-                onModelChange={onModelChange}
-                selectedEffort={selectedEffort}
-                onEffortChange={onEffortChange}
-                systemPrompt={systemPrompt}
-                onSystemPromptChange={onSystemPromptChange}
-              />
+              <ModelSetting {...settings} />
             </Dialog>
           </div>
           <InputGroup>
@@ -82,12 +54,7 @@ export function MessageBox({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
-                if (
-                  event.key === "Enter" &&
-                  !event.shiftKey &&
-                  !event.nativeEvent.isComposing &&
-                  event.keyCode !== 229
-                ) {
+                if (isSubmitEnter(event) && !event.shiftKey) {
                   event.preventDefault()
                   sendMessage()
                 }

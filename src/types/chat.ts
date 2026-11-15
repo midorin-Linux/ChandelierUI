@@ -1,4 +1,5 @@
-export type Effort = "off" | "low" | "medium" | "high" | "xhigh" | "max"
+export const efforts = ["off", "low", "medium", "high", "xhigh", "max"] as const
+export type Effort = (typeof efforts)[number]
 
 export interface ApiModel {
   id: string

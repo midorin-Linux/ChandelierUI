@@ -44,7 +44,7 @@ export function ChatUI({
               <h2 className="mb-1 text-xs font-medium text-muted-foreground">
                 {message.role === "user" ? "You" : message.role}
               </h2>
-              <p className="whitespace-pre-wrap wrap-break-words">
+              <p className="whitespace-pre-wrap wrap-break-word">
                 {message.content}
               </p>
             </article>
@@ -60,7 +60,7 @@ export function ChatUI({
         <div className="space-y-2 rounded-lg border border-destructive p-3">
           <p
             role="alert"
-            className="whitespace-pre-wrap wrap-break-words text-sm"
+            className="whitespace-pre-wrap wrap-break-word text-sm"
           >
             {error}
           </p>

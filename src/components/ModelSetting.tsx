@@ -10,16 +10,22 @@ import { Button } from "@/src/components/ui/button"
 import { ScrollArea } from "@/src/components/ui/scroll-area"
 import { Slider } from "@/src/components/ui/slider"
 import { Textarea } from "@/src/components/ui/textarea"
+import { efforts } from "@/src/types/chat"
 import type { ApiModel, Effort } from "@/src/types/chat"
 
-const effortOptions: readonly Effort[] = [
-  "off",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]
+export interface ModelSettingProps {
+  models: ApiModel[]
+  modelsLoading: boolean
+  modelsStatus: string
+  onRefreshModels: () => void
+  selectedModel: string
+  onModelChange: (model: string) => void
+  selectedEffort: Effort
+  onEffortChange: (effort: Effort) => void
+  systemPrompt: string
+  onSystemPromptChange: (prompt: string) => void
+}
+
 export function ModelSetting({
   models,
   modelsLoading,
@@ -31,18 +37,7 @@ export function ModelSetting({
   onEffortChange,
   systemPrompt,
   onSystemPromptChange,
-}: {
-  models: ApiModel[]
-  modelsLoading: boolean
-  modelsStatus: string
-  onRefreshModels: () => void
-  selectedModel: string
-  onModelChange: (model: string) => void
-  selectedEffort: Effort
-  onEffortChange: (effort: Effort) => void
-  systemPrompt: string
-  onSystemPromptChange: (prompt: string) => void
-}) {
+}: ModelSettingProps) {
   return (
     <DialogContent className="aspect-4/3 w-[calc(100%-2rem)] max-w-5xl">
       <header className="border-b px-4 py-4 pr-14">
@@ -113,7 +108,7 @@ export function ModelSetting({
                 className="flex justify-between text-xs text-muted-foreground"
                 aria-hidden="true"
               >
-                {effortOptions.map((effort) => (
+                {efforts.map((effort) => (
                   <span key={effort}>{effort}</span>
                 ))}
               </div>
@@ -121,16 +116,10 @@ export function ModelSetting({
                 className="my-2"
                 aria-labelledby="effort-label"
                 aria-valuetext={selectedEffort}
-                value={[
-                  effortOptions.findIndex(
-                    (effort) => effort === selectedEffort
-                  ),
-                ]}
-                onValueChange={([index]) =>
-                  onEffortChange(effortOptions[index])
-                }
+                value={[efforts.indexOf(selectedEffort)]}
+                onValueChange={([index]) => onEffortChange(efforts[index])}
                 min={0}
-                max={effortOptions.length - 1}
+                max={efforts.length - 1}
                 step={1}
               />
               <p className="text-xs text-muted-foreground">

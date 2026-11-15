@@ -1,13 +1,5 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from "@/src/components/ui/dialog"
+import { RotateCcw } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
-import { Input } from "@/src/components/ui/input"
-import { Field, FieldLabel } from "@/src/components/ui/field"
-import type { ApiModel } from "@/src/types/chat"
 import {
   Combobox,
   ComboboxContent,
@@ -15,8 +7,17 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-} from "@/src/components/ui/combobox.tsx"
-import { RotateCcw } from "lucide-react"
+} from "@/src/components/ui/combobox"
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/src/components/ui/dialog"
+import { Field, FieldLabel } from "@/src/components/ui/field"
+import { Input } from "@/src/components/ui/input"
+import { isSubmitEnter } from "@/src/lib/utils"
+import type { ApiModel } from "@/src/types/chat"
 
 export function ProviderSettings({
   providerUrl,
@@ -25,10 +26,10 @@ export function ProviderSettings({
   setProviderUrlInput,
   models,
   selectedModel,
-  selectModel,
+  onModelChange,
   modelsLoading,
   modelsStatus,
-  refreshModels,
+  onRefreshModels,
 }: {
   providerUrl: string
   setProviderUrl: (url: string) => void
@@ -36,10 +37,10 @@ export function ProviderSettings({
   setProviderUrlInput: (url: string) => void
   models: readonly ApiModel[]
   selectedModel: string
-  selectModel: (model: string) => void
+  onModelChange: (model: string) => void
   modelsLoading: boolean
   modelsStatus: string
-  refreshModels: () => void
+  onRefreshModels: () => void
 }) {
   return (
     <Dialog>
@@ -70,16 +71,11 @@ export function ProviderSettings({
               value={providerUrlInput}
               onChange={(event) => setProviderUrlInput(event.target.value)}
               onKeyDown={(event) => {
-                if (
-                  event.key !== "Enter" ||
-                  event.nativeEvent.isComposing ||
-                  event.keyCode === 229
-                )
-                  return
+                if (!isSubmitEnter(event)) return
                 event.preventDefault()
                 const url = providerUrlInput.trim()
                 if (!url) return
-                if (url === providerUrl) refreshModels()
+                if (url === providerUrl) onRefreshModels()
                 else setProviderUrl(url)
               }}
             />
@@ -91,7 +87,7 @@ export function ProviderSettings({
                 items={models.map((model) => model.id)}
                 value={selectedModel || null}
                 onValueChange={(value) => {
-                  if (value !== null) selectModel(value)
+                  if (value !== null) onModelChange(value)
                 }}
                 disabled={modelsLoading || models.length === 0}
               >
@@ -117,7 +113,7 @@ export function ProviderSettings({
                 className="size-8! shrink-0"
                 aria-label="Refresh models"
                 disabled={modelsLoading}
-                onClick={refreshModels}
+                onClick={onRefreshModels}
               >
                 <RotateCcw />
               </Button>
