@@ -300,7 +300,7 @@ export function Analysis({
                         "Time to first body bytes (TTFB)",
                         formatMetric(metrics.ttfb_ms, "ms"),
                       ],
-                      ["End to end", formatMetric(metrics.e2e_ms, "ms")],
+                      ["E2E Latency", formatMetric(metrics.e2e_ms, "ms")],
                       [
                         "Observed decode window",
                         formatMetric(metrics.decode_ms, "ms"),
