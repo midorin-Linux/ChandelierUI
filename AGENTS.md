@@ -65,3 +65,7 @@ Normal release output goes to `src-tauri/target/release/`, and installers are un
 
 ## PR & Commit Conventions
 Write in English.
+
+## Boundaries
+### Never
+Do not modify README.md, CLAUDE.md, or AGENTS.md. Please make changes only when instructed by the user.
