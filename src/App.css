@@ -147,8 +147,12 @@
   --md-number: oklch(0.82 0.11 60);
   --md-title: oklch(0.8 0.1 250);
 }
-.markdown-body > :first-child { @apply mt-0; }
-.markdown-body > :last-child { @apply mb-0; }
+.markdown-body > :first-child {
+  @apply mt-0;
+}
+.markdown-body > :last-child {
+  @apply mb-0;
+}
 
 /* Block rhythm */
 .markdown-body p,
@@ -156,7 +160,9 @@
 .markdown-body ol,
 .markdown-body blockquote,
 .markdown-body pre,
-.markdown-body .markdown-table { @apply my-3; }
+.markdown-body .markdown-table {
+  @apply my-3;
+}
 
 /* Headings */
 .markdown-body h1,
@@ -168,20 +174,34 @@
   @apply mt-7 mb-2.5 font-heading font-semibold leading-snug tracking-tight;
   text-wrap: balance;
 }
-.markdown-body h1 { @apply mb-3 text-[1.6rem] font-bold; }
-.markdown-body h2 { @apply border-b border-border pb-2 text-xl; }
-.markdown-body h3 { @apply mt-6 text-[1.075rem]; }
-.markdown-body h4 { @apply mt-5 text-base; }
+.markdown-body h1 {
+  @apply mb-3 text-[1.6rem] font-bold;
+}
+.markdown-body h2 {
+  @apply border-b border-border pb-2 text-xl;
+}
+.markdown-body h3 {
+  @apply mt-6 text-[1.075rem];
+}
+.markdown-body h4 {
+  @apply mt-5 text-base;
+}
 .markdown-body h5,
 .markdown-body h6 {
   @apply mt-5 text-xs tracking-widest text-muted-foreground uppercase;
 }
 /* A heading directly under another heading doesn't need the full gap. */
-.markdown-body :is(h1, h2, h3, h4, h5, h6) + :is(h2, h3, h4, h5, h6) { @apply mt-4; }
+.markdown-body :is(h1, h2, h3, h4, h5, h6) + :is(h2, h3, h4, h5, h6) {
+  @apply mt-4;
+}
 
 /* Inline */
-.markdown-body strong { @apply font-semibold; }
-.markdown-body del { @apply text-muted-foreground; }
+.markdown-body strong {
+  @apply font-semibold;
+}
+.markdown-body del {
+  @apply text-muted-foreground;
+}
 .markdown-body a {
   @apply font-medium text-foreground underline decoration-muted-foreground/50 decoration-1 underline-offset-4 transition-colors hover:decoration-foreground;
 }
@@ -193,62 +213,118 @@
 }
 
 /* Lists */
-.markdown-body ul { @apply list-disc pl-6; }
-.markdown-body ol { @apply list-decimal pl-6; }
-.markdown-body ul ul { list-style-type: circle; }
-.markdown-body li { @apply my-1 pl-1; }
-.markdown-body li::marker { @apply text-muted-foreground; }
-.markdown-body ol > li::marker { @apply text-[0.9em] font-medium tabular-nums; }
-.markdown-body li > p { @apply my-1; }
+.markdown-body ul {
+  @apply list-disc pl-6;
+}
+.markdown-body ol {
+  @apply list-decimal pl-6;
+}
+.markdown-body ul ul {
+  list-style-type: circle;
+}
+.markdown-body li {
+  @apply my-1 pl-1;
+}
+.markdown-body li::marker {
+  @apply text-muted-foreground;
+}
+.markdown-body ol > li::marker {
+  @apply text-[0.9em] font-medium tabular-nums;
+}
+.markdown-body li > p {
+  @apply my-1;
+}
 .markdown-body li > ul,
-.markdown-body li > ol { @apply my-1; }
-.markdown-body li.task-list-item { @apply list-none pl-0; }
-.markdown-body ul:has(> li.task-list-item) { @apply pl-1; }
-.markdown-body li.task-list-item > input { @apply mr-2 size-3.5 align-[-0.1em] accent-primary; }
+.markdown-body li > ol {
+  @apply my-1;
+}
+.markdown-body li.task-list-item {
+  @apply list-none pl-0;
+}
+.markdown-body ul:has(> li.task-list-item) {
+  @apply pl-1;
+}
+.markdown-body li.task-list-item > input {
+  @apply mr-2 size-3.5 align-[-0.1em] accent-primary;
+}
 
 /* Quote & rule */
 .markdown-body blockquote {
   @apply border-l-2 border-foreground/30 py-0.5 pl-4 text-muted-foreground;
 }
-.markdown-body blockquote > * { @apply my-2; }
-.markdown-body hr { @apply mx-auto my-6 border-border; }
+.markdown-body blockquote > * {
+  @apply my-2;
+}
+.markdown-body hr {
+  @apply mx-auto my-6 border-border;
+}
 
 /* Code blocks */
 .markdown-body pre {
   @apply overflow-x-auto rounded-lg border border-border bg-background px-4 py-3.5 font-mono text-[0.84rem] leading-[1.65];
   tab-size: 2;
 }
-.markdown-body pre code { @apply bg-background p-0; }
+.markdown-body pre code {
+  @apply bg-background p-0;
+}
 
 /* Tables */
-.markdown-table { @apply overflow-x-auto rounded-lg border border-border; }
-.markdown-body table { @apply w-full border-collapse text-sm leading-6; }
+.markdown-table {
+  @apply overflow-x-auto rounded-lg border border-border;
+}
+.markdown-body table {
+  @apply w-full border-collapse text-sm leading-6;
+}
 .markdown-body th,
-.markdown-body td { @apply px-4 py-2.5 text-left align-top; }
+.markdown-body td {
+  @apply px-4 py-2.5 text-left align-top;
+}
 .markdown-body th {
   @apply border-b border-border bg-muted/60 text-xs font-semibold tracking-wide whitespace-nowrap text-muted-foreground;
 }
-.markdown-body tbody tr + tr > * { @apply border-t border-border; }
-.markdown-body tbody tr { @apply transition-colors hover:bg-muted/40; }
+.markdown-body tbody tr + tr > * {
+  @apply border-t border-border;
+}
+.markdown-body tbody tr {
+  @apply transition-colors hover:bg-muted/40;
+}
 
 /* Media & math */
-[data-slot="markdown-image"] { @apply text-muted-foreground italic; }
-.markdown-body .katex-display { @apply my-5 overflow-x-auto overflow-y-hidden py-1; }
+[data-slot="markdown-image"] {
+  @apply text-muted-foreground italic;
+}
+.markdown-body .katex-display {
+  @apply my-5 overflow-x-auto overflow-y-hidden py-1;
+}
 
 /* Syntax highlighting (rehype-highlight/highlight.js class names). */
 .hljs-comment,
-.hljs-quote { @apply text-muted-foreground italic; }
+.hljs-quote {
+  @apply text-muted-foreground italic;
+}
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-built_in,
-.hljs-type { color: var(--md-keyword); }
+.hljs-type {
+  color: var(--md-keyword);
+}
 .hljs-string,
 .hljs-regexp,
 .hljs-attr,
-.hljs-symbol { color: var(--md-string); }
+.hljs-symbol {
+  color: var(--md-string);
+}
 .hljs-number,
-.hljs-literal { color: var(--md-number); }
+.hljs-literal {
+  color: var(--md-number);
+}
 .hljs-title,
-.hljs-section { color: var(--md-title); }
-.hljs-emphasis { @apply italic; }
-.hljs-strong { @apply font-bold; }
+.hljs-section {
+  color: var(--md-title);
+}
+.hljs-emphasis {
+  @apply italic;
+}
+.hljs-strong {
+  @apply font-bold;
+}

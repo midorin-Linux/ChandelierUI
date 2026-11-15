@@ -20,7 +20,7 @@ import type {
   Effort,
   ProviderChatRequest,
 } from "@/src/types/chat"
-import {ThemeProvider} from "@/src/components/ThemeProvider.tsx";
+import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 
 function App() {
   const [providerUrl, setProviderUrl] = useState("")

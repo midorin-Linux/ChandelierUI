@@ -36,7 +36,10 @@ assert(
   "Late data after failure cannot rewrite partial output"
 )
 state = completionStream(state, { type: "start", attemptId: 2 })
-assert(state.isPending && state.message === null, "Retry clears old partial output")
+assert(
+  state.isPending && state.message === null,
+  "Retry clears old partial output"
+)
 assert(
   completionStream(state, { type: "delta", attemptId: 1, delta }) === state,
   "Old attempt deltas cannot modify a new attempt"

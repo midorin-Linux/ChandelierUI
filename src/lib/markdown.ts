@@ -24,7 +24,11 @@ interface MarkdownNode {
 function rehypeProtectMathCode() {
   return (tree: MarkdownNode) => {
     function protect(node: MarkdownNode): void {
-      if (node.type === "element" && node.tagName === "code" && node.properties) {
+      if (
+        node.type === "element" &&
+        node.tagName === "code" &&
+        node.properties
+      ) {
         const classes = node.properties.className
         // KaTeX also claims ```math fences; only remark-math nodes are math.
         if (
@@ -33,7 +37,9 @@ function rehypeProtectMathCode() {
           !classes.includes("math-inline") &&
           !classes.includes("math-display")
         ) {
-          node.properties.className = classes.filter((name) => name !== "language-math")
+          node.properties.className = classes.filter(
+            (name) => name !== "language-math"
+          )
         }
       }
       node.children?.forEach(protect)
@@ -50,13 +56,16 @@ export const remarkPlugins: NonNullable<Options["remarkPlugins"]> = [
 export const rehypePlugins: NonNullable<Options["rehypePlugins"]> = [
   rehypeProtectMathCode,
   // rehype-katex catches parse errors and retries with throwOnError: false.
-  [rehypeKatex, {
-    strict: "ignore",
-    trust: false,
-    maxSize: 10,
-    maxExpand: 1000,
-    errorColor: "var(--destructive)",
-  }],
+  [
+    rehypeKatex,
+    {
+      strict: "ignore",
+      trust: false,
+      maxSize: 10,
+      maxExpand: 1000,
+      errorColor: "var(--destructive)",
+    },
+  ],
   // detect: no guessing for unlabeled fences; ignoreMissing: unknown labels
   // must not throw while a response is still streaming.
   [rehypeHighlight, { detect: false, ignoreMissing: true }],

@@ -4,11 +4,7 @@ import type { Components } from "react-markdown"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import "katex/dist/katex.min.css"
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters"
-import {
-  rehypePlugins,
-  remarkPlugins,
-  urlTransform,
-} from "@/src/lib/markdown"
+import { rehypePlugins, remarkPlugins, urlTransform } from "@/src/lib/markdown"
 
 // Extension point: add e.g. a copy-button `pre` here later.
 const components: Components = {

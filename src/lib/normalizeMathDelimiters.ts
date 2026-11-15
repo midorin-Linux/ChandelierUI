@@ -1,9 +1,14 @@
-const fencePattern = /^(?:[ \t]*(?:>[ \t]?|(?:[-+*]|\d+[.)])[ \t]+))*[ \t]*(`{3,}|~{3,})(.*)$/
+const fencePattern =
+  /^(?:[ \t]*(?:>[ \t]?|(?:[-+*]|\d+[.)])[ \t]+))*[ \t]*(`{3,}|~{3,})(.*)$/
 
 function fenceAt(content: string, start: number): RegExpExecArray | null {
   const end = content.indexOf("\n", start)
-  const match = fencePattern.exec(content.slice(start, end < 0 ? undefined : end))
-  return match && !(match[1][0] === "`" && match[2].includes("`")) ? match : null
+  const match = fencePattern.exec(
+    content.slice(start, end < 0 ? undefined : end)
+  )
+  return match && !(match[1][0] === "`" && match[2].includes("`"))
+    ? match
+    : null
 }
 
 function runEnd(content: string, start: number): number {
@@ -17,7 +22,12 @@ function fenceEnd(content: string, start: number, marker: string): number {
   while (line >= 0) {
     const match = fenceAt(content, line + 1)
     const end = content.indexOf("\n", line + 1)
-    if (match && match[1][0] === marker[0] && match[1].length >= marker.length && !match[2].trim()) {
+    if (
+      match &&
+      match[1][0] === marker[0] &&
+      match[1].length >= marker.length &&
+      !match[2].trim()
+    ) {
       return end < 0 ? content.length : end + 1
     }
     line = end
@@ -29,7 +39,11 @@ function codeSpanEnd(content: string, start: number, length: number): number {
   let cursor = start + length
   while (cursor < content.length) {
     if (content[cursor] === "\n") {
-      if (/^[ \t]*\r?\n/.test(content.slice(cursor + 1)) || fenceAt(content, cursor + 1)) return -1
+      if (
+        /^[ \t]*\r?\n/.test(content.slice(cursor + 1)) ||
+        fenceAt(content, cursor + 1)
+      )
+        return -1
     } else if (content[cursor] === "`") {
       const end = runEnd(content, cursor)
       if (end - cursor === length) return end
@@ -41,11 +55,23 @@ function codeSpanEnd(content: string, start: number, length: number): number {
   return -1
 }
 
-function closingDelimiter(content: string, start: number, delimiter: string): number {
+function closingDelimiter(
+  content: string,
+  start: number,
+  delimiter: string
+): number {
   for (let cursor = start; cursor < content.length; cursor++) {
-    if ((cursor === 0 || content[cursor - 1] === "\n") && fenceAt(content, cursor)) return -1
+    if (
+      (cursor === 0 || content[cursor - 1] === "\n") &&
+      fenceAt(content, cursor)
+    )
+      return -1
     if (content.startsWith(delimiter, cursor)) {
-      if (delimiter[0] !== "$" || runEnd(content, cursor) - cursor === delimiter.length) return cursor
+      if (
+        delimiter[0] !== "$" ||
+        runEnd(content, cursor) - cursor === delimiter.length
+      )
+        return cursor
     }
     if (content[cursor] === "\\") cursor++
     else if (content[cursor] === "$") cursor = runEnd(content, cursor) - 1
@@ -95,18 +121,28 @@ export function normalizeMathDelimiters(content: string): string {
       continue
     }
 
-    const slashMath = content[cursor] === "\\" && (content[cursor + 1] === "(" || content[cursor + 1] === "[")
+    const slashMath =
+      content[cursor] === "\\" &&
+      (content[cursor + 1] === "(" || content[cursor + 1] === "[")
     if (slashMath || content[cursor] === "$") {
       const end = slashMath ? cursor + 2 : runEnd(content, cursor)
-      const delimiter = slashMath ? (content[cursor + 1] === "(" ? "\\)" : "\\]") : content.slice(cursor, end)
+      const delimiter = slashMath
+        ? content[cursor + 1] === "("
+          ? "\\)"
+          : "\\]"
+        : content.slice(cursor, end)
       const display = slashMath ? content[cursor + 1] === "[" : end - cursor > 1
       const close = closingDelimiter(content, end, delimiter)
       const payload = close < 0 ? "" : content.slice(end, close)
 
       // shortcut: numeric-leading prose is currency unless it has math syntax; use \(...\) for ambiguous numeric prose math.
-      const currency = !slashMath && !display && /\d/.test(content[end] ?? "") && (
-        close < 0 || /\d/.test(content[close + 1] ?? "") || (/\s/.test(payload) && !/[\\^_{}=+*/<>-]/.test(payload))
-      )
+      const currency =
+        !slashMath &&
+        !display &&
+        /\d/.test(content[end] ?? "") &&
+        (close < 0 ||
+          /\d/.test(content[close + 1] ?? "") ||
+          (/\s/.test(payload) && !/[\\^_{}=+*/<>-]/.test(payload)))
       if (currency || (display && close < 0 && !slashMath)) {
         result += "\\$".repeat(end - cursor)
         cursor = end

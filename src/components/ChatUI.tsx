@@ -84,8 +84,9 @@ export function ChatUI({
               {error}
             </p>
             <p className="text-sm text-muted-foreground">
-              Your messages are kept. Check the local server, provider URL, model
-              ID, and effort support, then retry with the current settings.
+              Your messages are kept. Check the local server, provider URL,
+              model ID, and effort support, then retry with the current
+              settings.
             </p>
             {!canSend && (
               <p role="status" className="text-sm text-muted-foreground">
@@ -122,7 +123,9 @@ function AssistantMessage({
 }) {
   return (
     <article
-      aria-label={failed ? "Incomplete assistant response" : "Assistant response"}
+      aria-label={
+        failed ? "Incomplete assistant response" : "Assistant response"
+      }
       className="mb-4 flex flex-col gap-3"
     >
       {message.reasoning && (

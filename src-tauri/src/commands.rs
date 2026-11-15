@@ -1,8 +1,12 @@
-use std::{borrow::Cow, net::IpAddr, time::{Duration, Instant}};
+use std::{
+    borrow::Cow,
+    net::IpAddr,
+    time::{Duration, Instant},
+};
 
 use reqwest::{Client, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
-use tauri::{ipc::Channel, State};
+use tauri::{State, ipc::Channel};
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -58,7 +62,11 @@ pub struct Provider {
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct Model {
     id: String,
-    #[serde(default, deserialize_with = "positive_context_length", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "positive_context_length",
+        skip_serializing_if = "Option::is_none"
+    )]
     context_length: Option<u64>,
 }
 
@@ -67,7 +75,9 @@ struct Models {
     data: Vec<Model>,
 }
 
-fn positive_context_length<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
+fn positive_context_length<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
     let value = serde_json::Value::deserialize(deserializer)?;
     Ok(value.as_u64().filter(|length| *length > 0))
 }
@@ -95,7 +105,10 @@ struct WireRequest<'a> {
     stream_options: StreamOptions,
 }
 
-fn serialize_wire_messages<S: serde::Serializer>(messages: &[Message], serializer: S) -> Result<S::Ok, S::Error> {
+fn serialize_wire_messages<S: serde::Serializer>(
+    messages: &[Message],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
     #[derive(Serialize)]
     struct WireMessage<'a> {
         role: &'a Role,
@@ -170,7 +183,10 @@ impl<'de: 'a, 'a> Deserialize<'de> for ChoiceList<'a> {
                 formatter.write_str("at most one completion choice")
             }
 
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut sequence: A) -> Result<Self::Value, A::Error> {
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut sequence: A,
+            ) -> Result<Self::Value, A::Error> {
                 let choice = sequence.next_element()?;
                 if sequence.next_element::<serde::de::IgnoredAny>()?.is_some() {
                     return Err(serde::de::Error::custom("multiple completion choices"));
@@ -254,7 +270,11 @@ struct SseDecoder {
 }
 
 impl SseDecoder {
-    fn feed(&mut self, bytes: &[u8], mut event: impl FnMut(&[u8]) -> Result<bool, String>) -> Result<bool, String> {
+    fn feed(
+        &mut self,
+        bytes: &[u8],
+        mut event: impl FnMut(&[u8]) -> Result<bool, String>,
+    ) -> Result<bool, String> {
         for &byte in bytes {
             if self.after_cr {
                 self.after_cr = false;
@@ -269,7 +289,11 @@ impl SseDecoder {
             if byte == b'\n' || byte == b'\r' {
                 self.after_cr = byte == b'\r';
                 if self.line.is_empty() {
-                    let done = if self.has_data { event(&self.data)? } else { false };
+                    let done = if self.has_data {
+                        event(&self.data)?
+                    } else {
+                        false
+                    };
                     self.data.clear();
                     self.has_data = false;
                     self.event_bytes = 0;
@@ -277,14 +301,16 @@ impl SseDecoder {
                         return Ok(true);
                     }
                 } else {
-                    let line = std::str::from_utf8(&self.line)
-                        .map_err(|_| "Chat provider returned invalid UTF-8 in its SSE stream.".to_string())?;
+                    let line = std::str::from_utf8(&self.line).map_err(|_| {
+                        "Chat provider returned invalid UTF-8 in its SSE stream.".to_string()
+                    })?;
                     let (field, value) = line.split_once(':').unwrap_or((line, ""));
                     if field == "data" {
                         if self.has_data {
                             self.data.push(b'\n');
                         }
-                        self.data.extend_from_slice(value.strip_prefix(' ').unwrap_or(value).as_bytes());
+                        self.data
+                            .extend_from_slice(value.strip_prefix(' ').unwrap_or(value).as_bytes());
                         self.has_data = true;
                     }
                     self.line.clear();
@@ -336,7 +362,12 @@ struct CompletionStream {
 }
 
 impl CompletionStream {
-    fn event(&mut self, data: &[u8], elapsed_ms: f64, on_event: &mut impl FnMut(CompletionDelta) -> Result<(), String>) -> Result<bool, String> {
+    fn event(
+        &mut self,
+        data: &[u8],
+        elapsed_ms: f64,
+        on_event: &mut impl FnMut(CompletionDelta) -> Result<(), String>,
+    ) -> Result<bool, String> {
         if data == b"[DONE]" {
             return Ok(true);
         }
@@ -350,22 +381,38 @@ impl CompletionStream {
             return Err("Chat provider returned no choices.".into());
         }
         if let Some(usage) = event.usage {
-            if usage.prompt_tokens.is_some() { self.metrics.input_tokens = usage.prompt_tokens; }
-            if usage.completion_tokens.is_some() { self.metrics.output_tokens = usage.completion_tokens; }
-            if usage.total_tokens.is_some() { self.metrics.total_tokens = usage.total_tokens; }
+            if usage.prompt_tokens.is_some() {
+                self.metrics.input_tokens = usage.prompt_tokens;
+            }
+            if usage.completion_tokens.is_some() {
+                self.metrics.output_tokens = usage.completion_tokens;
+            }
+            if usage.total_tokens.is_some() {
+                self.metrics.total_tokens = usage.total_tokens;
+            }
             if let Some(details) = usage.prompt_tokens_details {
-                if details.cached_tokens.is_some() { self.metrics.cached_tokens = details.cached_tokens; }
+                if details.cached_tokens.is_some() {
+                    self.metrics.cached_tokens = details.cached_tokens;
+                }
             }
             if let Some(details) = usage.completion_tokens_details {
-                if details.reasoning_tokens.is_some() { self.metrics.reasoning_tokens = details.reasoning_tokens; }
+                if details.reasoning_tokens.is_some() {
+                    self.metrics.reasoning_tokens = details.reasoning_tokens;
+                }
             }
         }
         if let Some(timings) = event.timings {
             // Provider-reported llama.cpp timings, not client-side phase measurements.
-            if let Some(value) = timings.prompt_ms.filter(|value| value.is_finite() && *value >= 0.0) {
+            if let Some(value) = timings
+                .prompt_ms
+                .filter(|value| value.is_finite() && *value >= 0.0)
+            {
                 self.metrics.prefill_ms = Some(value);
             }
-            if let Some(value) = timings.predicted_ms.filter(|value| value.is_finite() && *value >= 0.0) {
+            if let Some(value) = timings
+                .predicted_ms
+                .filter(|value| value.is_finite() && *value >= 0.0)
+            {
                 self.metrics.server_decode_ms = Some(value);
             }
         }
@@ -373,25 +420,42 @@ impl CompletionStream {
             if choice.index != 0 {
                 return Err("Chat provider returned an unexpected choice index.".into());
             }
-            if choice.delta.role.as_deref().is_some_and(|role| role != "assistant") {
+            if choice
+                .delta
+                .role
+                .as_deref()
+                .is_some_and(|role| role != "assistant")
+            {
                 return Err("Chat provider did not return an assistant message.".into());
             }
-            if choice.delta.refusal.as_deref().is_some_and(|text| !text.trim().is_empty()) {
+            if choice
+                .delta
+                .refusal
+                .as_deref()
+                .is_some_and(|text| !text.trim().is_empty())
+            {
                 return Err("Chat provider refused the request.".into());
             }
             if self.metrics.finish_reason.is_some() {
                 return Err("Chat provider returned a choice after its finish reason.".into());
             }
             let content = choice.delta.content.as_deref().unwrap_or("");
-            let reasoning = choice.delta.reasoning_content.as_deref()
+            let reasoning = choice
+                .delta
+                .reasoning_content
+                .as_deref()
                 .filter(|text| !text.is_empty())
-                .or(choice.delta.reasoning.as_deref()).unwrap_or("");
+                .or(choice.delta.reasoning.as_deref())
+                .unwrap_or("");
             if !content.is_empty() || !reasoning.is_empty() {
                 self.metrics.ttft_ms.get_or_insert(elapsed_ms);
                 self.intervals.record(elapsed_ms);
                 self.text.push_str(content);
                 self.reasoning.push_str(reasoning);
-                on_event(CompletionDelta { content: content.into(), reasoning: reasoning.into() })?;
+                on_event(CompletionDelta {
+                    content: content.into(),
+                    reasoning: reasoning.into(),
+                })?;
             }
             if let Some(reason) = choice.finish_reason {
                 if reason.trim().is_empty() {
@@ -408,18 +472,27 @@ impl CompletionStream {
 
     fn validate(&self) -> Result<(), String> {
         if self.metrics.finish_reason.is_none() {
-            return Err("Chat provider returned a truncated completion (missing finish_reason).".into());
+            return Err(
+                "Chat provider returned a truncated completion (missing finish_reason).".into(),
+            );
         }
         if self.text.trim().is_empty() {
-            return Err("Chat provider returned no assistant text (empty or tool-only response).".into());
+            return Err(
+                "Chat provider returned no assistant text (empty or tool-only response).".into(),
+            );
         }
         Ok(())
     }
 
     fn finish(mut self, elapsed_ms: f64, error: Option<String>) -> MeasuredCompletion {
         self.metrics.e2e_ms = elapsed_ms;
-        self.metrics.decode_ms = self.metrics.ttft_ms.map(|first| (elapsed_ms - first).max(0.0));
-        if let (Some(tokens), Some(decode_ms)) = (self.metrics.output_tokens, self.metrics.decode_ms) {
+        self.metrics.decode_ms = self
+            .metrics
+            .ttft_ms
+            .map(|first| (elapsed_ms - first).max(0.0));
+        if let (Some(tokens), Some(decode_ms)) =
+            (self.metrics.output_tokens, self.metrics.decode_ms)
+        {
             if tokens > 0 && decode_ms > 0.0 {
                 self.metrics.output_tps = Some(tokens as f64 * 1000.0 / decode_ms);
             }
@@ -431,12 +504,17 @@ impl CompletionStream {
         if self.intervals.count > 0 {
             self.metrics.chunk_interval_mean_ms = Some(self.intervals.mean);
             self.metrics.chunk_interval_max_ms = Some(self.intervals.max);
-            self.metrics.chunk_interval_stddev_ms =
-                Some((self.intervals.m2 / self.intervals.count as f64).max(0.0).sqrt());
+            self.metrics.chunk_interval_stddev_ms = Some(
+                (self.intervals.m2 / self.intervals.count as f64)
+                    .max(0.0)
+                    .sqrt(),
+            );
         }
         MeasuredCompletion {
             message: (!self.text.is_empty() || !self.reasoning.is_empty()).then_some(Message {
-                role: Role::Assistant, content: self.text, reasoning: self.reasoning,
+                role: Role::Assistant,
+                content: self.text,
+                reasoning: self.reasoning,
             }),
             error,
             metrics: self.metrics,
@@ -486,18 +564,33 @@ fn endpoint(base: &str, suffix: &str) -> Result<Url, String> {
     Ok(url)
 }
 
-async fn complete(client: &Client, payload: ChatPayload, mut on_event: impl FnMut(CompletionDelta) -> Result<(), String>) -> MeasuredCompletion {
+async fn complete(
+    client: &Client,
+    payload: ChatPayload,
+    mut on_event: impl FnMut(CompletionDelta) -> Result<(), String>,
+) -> MeasuredCompletion {
     let url = match endpoint(&payload.provider.base_url, "chat/completions") {
         Ok(url) => url,
-        Err(error) => return MeasuredCompletion { error: Some(error), ..Default::default() },
+        Err(error) => {
+            return MeasuredCompletion {
+                error: Some(error),
+                ..Default::default()
+            };
+        }
     };
     let request = payload.request;
     if request.model.trim().is_empty()
         || request.messages.is_empty()
-        || request.messages.iter().any(|message| message.content.trim().is_empty())
+        || request
+            .messages
+            .iter()
+            .any(|message| message.content.trim().is_empty())
     {
         return MeasuredCompletion {
-            error: Some("A nonblank model and at least one message with nonblank content are required.".into()),
+            error: Some(
+                "A nonblank model and at least one message with nonblank content are required."
+                    .into(),
+            ),
             ..Default::default()
         };
     }
@@ -507,7 +600,9 @@ async fn complete(client: &Client, payload: ChatPayload, mut on_event: impl FnMu
         messages: &request.messages,
         reasoning_effort: request.reasoning_effort.wire(),
         stream: true,
-        stream_options: StreamOptions { include_usage: true },
+        stream_options: StreamOptions {
+            include_usage: true,
+        },
     });
     let mut stream = CompletionStream::default();
     let started = Instant::now();
@@ -515,8 +610,15 @@ async fn complete(client: &Client, payload: ChatPayload, mut on_event: impl FnMu
         Ok(response) => response,
         Err(error) => {
             stream.metrics.timed_out = error.is_timeout();
-            let message = if error.is_timeout() { "Chat request timed out." } else { "Could not reach the chat provider." };
-            return stream.finish(started.elapsed().as_secs_f64() * 1000.0, Some(message.into()));
+            let message = if error.is_timeout() {
+                "Chat request timed out."
+            } else {
+                "Could not reach the chat provider."
+            };
+            return stream.finish(
+                started.elapsed().as_secs_f64() * 1000.0,
+                Some(message.into()),
+            );
         }
     };
     let status = response.status();
@@ -525,10 +627,14 @@ async fn complete(client: &Client, payload: ChatPayload, mut on_event: impl FnMu
     let (e2e_ms, error) = loop {
         match response.chunk().await {
             Ok(Some(bytes)) => {
-                if bytes.is_empty() { continue; }
+                if bytes.is_empty() {
+                    continue;
+                }
                 let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
                 stream.metrics.ttfb_ms.get_or_insert(elapsed_ms);
-                if !status.is_success() { continue; }
+                if !status.is_success() {
+                    continue;
+                }
                 match decoder.feed(&bytes, |data| stream.event(data, elapsed_ms, &mut on_event)) {
                     Ok(true) => break (elapsed_ms, stream.validate().err()),
                     Ok(false) => {}
@@ -546,12 +652,19 @@ async fn complete(client: &Client, payload: ChatPayload, mut on_event: impl FnMu
             }
             Err(error) => {
                 stream.metrics.timed_out = error.is_timeout();
-                let message = if error.is_timeout() { "Chat response body timed out." } else { "Could not read the chat response body." };
-                break (started.elapsed().as_secs_f64() * 1000.0, Some(if status.is_success() {
-                    message.into()
+                let message = if error.is_timeout() {
+                    "Chat response body timed out."
                 } else {
-                    format!("Chat provider returned HTTP {}. {message}", status.as_u16())
-                }));
+                    "Could not read the chat response body."
+                };
+                break (
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    Some(if status.is_success() {
+                        message.into()
+                    } else {
+                        format!("Chat provider returned HTTP {}. {message}", status.as_u16())
+                    }),
+                );
             }
         }
     };
@@ -590,8 +703,11 @@ pub async fn chat_completion(
     on_event: Channel<CompletionDelta>,
 ) -> Result<MeasuredCompletion, String> {
     Ok(complete(client.inner(), payload, |delta| {
-        on_event.send(delta).map_err(|_| "Could not deliver the chat response to the UI.".into())
-    }).await)
+        on_event
+            .send(delta)
+            .map_err(|_| "Could not deliver the chat response to the UI.".into())
+    })
+    .await)
 }
 
 #[tauri::command]
@@ -653,7 +769,9 @@ mod tests {
             socket.write_all(response.as_bytes()).await.unwrap();
             for (delay, chunk) in chunks {
                 tokio::time::sleep(delay).await;
-                if socket.write_all(&chunk).await.is_err() { break; }
+                if socket.write_all(&chunk).await.is_err() {
+                    break;
+                }
             }
             String::from_utf8(bytes).unwrap()
         });
@@ -661,13 +779,22 @@ mod tests {
     }
 
     fn event(delta: serde_json::Value, finish_reason: Option<&str>) -> String {
-        format!("data: {}\n\n", serde_json::json!({
-            "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}]
-        }))
+        format!(
+            "data: {}\n\n",
+            serde_json::json!({
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}]
+            })
+        )
     }
 
     fn completion(text: &str) -> String {
-        format!("{}data: [DONE]\n\n", event(serde_json::json!({"role": "assistant", "content": text}), Some("stop")))
+        format!(
+            "{}data: [DONE]\n\n",
+            event(
+                serde_json::json!({"role": "assistant", "content": text}),
+                Some("stop")
+            )
+        )
     }
 
     fn payload(base_url: String, effort: &str) -> ChatPayload {
@@ -691,14 +818,20 @@ mod tests {
             loop {
                 let count = socket.read(&mut buffer).await.unwrap();
                 assert!(count > 0);
-                request.extend_from_slice(&buffer[..count]);
+                request.extend_from_slice(&buffer[.. count]);
                 if let Some(end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
-                    let headers = String::from_utf8_lossy(&request[..end]);
-                    let length: usize = headers.lines().find_map(|line| {
-                        let (name, value) = line.split_once(':')?;
-                        name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse().unwrap())
-                    }).unwrap_or(0);
-                    if request.len() >= end + 4 + length { break; }
+                    let headers = String::from_utf8_lossy(&request[.. end]);
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
                 }
             }
             socket.write_all(format!(
@@ -710,21 +843,33 @@ mod tests {
         });
         let mut emitted = Some(emitted);
         let mut deltas = Vec::new();
-        let result = tokio::time::timeout(Duration::from_secs(5), complete(
-            &http_client().unwrap(), payload(base, "off"), |delta| {
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            complete(&http_client().unwrap(), payload(base, "off"), |delta| {
                 if delta.reasoning == "Thinking" {
                     emitted.take().unwrap().send(()).unwrap();
                 }
                 deltas.push(delta);
                 Ok(())
-            },
-        )).await.unwrap();
+            }),
+        )
+        .await
+        .unwrap();
         task.await.unwrap();
         assert!(result.error.is_none(), "{:?}", result.error);
-        assert_eq!(deltas, vec![
-            CompletionDelta { content: "".into(), reasoning: "Thinking".into() },
-            CompletionDelta { content: "Answer".into(), reasoning: "".into() },
-        ]);
+        assert_eq!(
+            deltas,
+            vec![
+                CompletionDelta {
+                    content: "".into(),
+                    reasoning: "Thinking".into()
+                },
+                CompletionDelta {
+                    content: "Answer".into(),
+                    reasoning: "".into()
+                },
+            ]
+        );
         let reply = result.message.unwrap();
         assert_eq!(reply.content, "Answer");
         assert_eq!(reply.reasoning, "Thinking");
@@ -736,21 +881,47 @@ mod tests {
         let mut stream = CompletionStream::default();
         let mut deltas = Vec::new();
         for (elapsed, delta, finish) in [
-            (5.0, serde_json::json!({"role":"assistant","content":""}), None),
+            (
+                5.0,
+                serde_json::json!({"role":"assistant","content":""}),
+                None,
+            ),
             (10.0, serde_json::json!({"reasoning_content":"Ré"}), None),
-            (30.0, serde_json::json!({"content":"Hi","reasoning":"ason"}), None),
+            (
+                30.0,
+                serde_json::json!({"content":"Hi","reasoning":"ason"}),
+                None,
+            ),
             (40.0, serde_json::json!({}), Some("stop")),
         ] {
             for byte in event(delta, finish).replace('\n', "\r\n").as_bytes() {
-                assert!(!decoder.feed(std::slice::from_ref(byte), |data| stream.event(
-                    data, elapsed, &mut |delta| { deltas.push(delta); Ok(()) },
-                )).unwrap());
+                assert!(
+                    !decoder
+                        .feed(std::slice::from_ref(byte), |data| stream.event(
+                            data,
+                            elapsed,
+                            &mut |delta| {
+                                deltas.push(delta);
+                                Ok(())
+                            },
+                        ))
+                        .unwrap()
+                );
             }
         }
-        assert_eq!(deltas, vec![
-            CompletionDelta { content: "".into(), reasoning: "Ré".into() },
-            CompletionDelta { content: "Hi".into(), reasoning: "ason".into() },
-        ]);
+        assert_eq!(
+            deltas,
+            vec![
+                CompletionDelta {
+                    content: "".into(),
+                    reasoning: "Ré".into()
+                },
+                CompletionDelta {
+                    content: "Hi".into(),
+                    reasoning: "ason".into()
+                },
+            ]
+        );
         assert_eq!(stream.metrics.ttft_ms, Some(10.0));
         assert_eq!(stream.intervals.count, 1);
         assert_eq!(stream.intervals.mean, 20.0);
@@ -764,22 +935,50 @@ mod tests {
     fn retains_emitted_deltas_on_stream_errors() {
         for (tail, expected) in [
             ("data: broken\n\n".into(), "invalid JSON"),
-            ("data: {\"error\":{\"message\":\"secret\"}}\n\n".into(), "stream error"),
-            (event(serde_json::json!({"refusal":"secret","content":"not emitted"}), None), "refused"),
+            (
+                "data: {\"error\":{\"message\":\"secret\"}}\n\n".into(),
+                "stream error",
+            ),
+            (
+                event(
+                    serde_json::json!({"refusal":"secret","content":"not emitted"}),
+                    None,
+                ),
+                "refused",
+            ),
             ("data: {\"choices\":".into(), "truncated SSE"),
             (String::new(), "missing finish_reason"),
         ] {
             let mut decoder = SseDecoder::default();
             let mut stream = CompletionStream::default();
             let mut deltas = Vec::new();
-            let mut emit = |delta| { deltas.push(delta); Ok(()) };
-            decoder.feed(event(serde_json::json!({"content":"partial","reasoning":"why"}), None).as_bytes(),
-                |data| stream.event(data, 10.0, &mut emit)).unwrap();
-            let error = decoder.feed(tail.as_bytes(), |data| stream.event(data, 20.0, &mut emit))
+            let mut emit = |delta| {
+                deltas.push(delta);
+                Ok(())
+            };
+            decoder
+                .feed(
+                    event(
+                        serde_json::json!({"content":"partial","reasoning":"why"}),
+                        None,
+                    )
+                    .as_bytes(),
+                    |data| stream.event(data, 10.0, &mut emit),
+                )
+                .unwrap();
+            let error = decoder
+                .feed(tail.as_bytes(), |data| stream.event(data, 20.0, &mut emit))
                 .and_then(|_| decoder.finish())
-                .and_then(|()| stream.validate()).unwrap_err();
+                .and_then(|()| stream.validate())
+                .unwrap_err();
             assert!(error.contains(expected), "{error}");
-            assert_eq!(deltas, vec![CompletionDelta { content: "partial".into(), reasoning: "why".into() }]);
+            assert_eq!(
+                deltas,
+                vec![CompletionDelta {
+                    content: "partial".into(),
+                    reasoning: "why".into()
+                }]
+            );
             let reply = stream.finish(30.0, Some(error)).message.unwrap();
             assert_eq!(reply.content, "partial");
             assert_eq!(reply.reasoning, "why");
@@ -790,16 +989,38 @@ mod tests {
     fn omits_reasoning_from_request_messages_and_empty_replies() {
         let request = ChatRequest {
             model: "local".into(),
-            messages: vec![Message { role: Role::Assistant, content: "Hi".into(), reasoning: "private metadata".into() }],
+            messages: vec![Message {
+                role: Role::Assistant,
+                content: "Hi".into(),
+                reasoning: "private metadata".into(),
+            }],
             reasoning_effort: ReasoningEffort::Off,
         };
         let wire = serde_json::to_value(WireRequest {
-            model: &request.model, messages: &request.messages,
-            reasoning_effort: "none", stream: true, stream_options: StreamOptions { include_usage: true },
-        }).unwrap();
-        assert_eq!(wire["messages"], serde_json::json!([{"role":"assistant","content":"Hi"}]));
-        let reply = Message { role: Role::Assistant, content: "Hi".into(), reasoning: String::new() };
-        assert!(serde_json::to_value(reply).unwrap().get("reasoning").is_none());
+            model: &request.model,
+            messages: &request.messages,
+            reasoning_effort: "none",
+            stream: true,
+            stream_options: StreamOptions {
+                include_usage: true,
+            },
+        })
+        .unwrap();
+        assert_eq!(
+            wire["messages"],
+            serde_json::json!([{"role":"assistant","content":"Hi"}])
+        );
+        let reply = Message {
+            role: Role::Assistant,
+            content: "Hi".into(),
+            reasoning: String::new(),
+        };
+        assert!(
+            serde_json::to_value(reply)
+                .unwrap()
+                .get("reasoning")
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -813,11 +1034,7 @@ mod tests {
             ("xhigh", "xhigh"),
             ("max", "xhigh"),
         ] {
-            let (base, task) = server(
-                "200 OK",
-                &completion("Hi"),
-            )
-            .await;
+            let (base, task) = server("200 OK", &completion("Hi")).await;
             let result = complete(&client, payload(base, effort), |_| Ok(())).await;
             assert!(result.error.is_none(), "{:?}", result.error);
             let reply = result.message.unwrap();
@@ -881,7 +1098,12 @@ mod tests {
     #[tokio::test]
     async fn measures_delayed_fragmented_sse_and_provider_usage() {
         let first = event(serde_json::json!({"content":"Hé"}), None).replace('\n', "\r\n");
-        let split = first.as_bytes().iter().position(|byte| *byte == 0xc3).unwrap() + 1;
+        let split = first
+            .as_bytes()
+            .iter()
+            .position(|byte| *byte == 0xc3)
+            .unwrap()
+            + 1;
         let delay = Duration::from_millis(40);
         let (base, task) = stream_server("200 OK", vec![
             (delay, b": keepalive\r\n\r\n".to_vec()),
@@ -900,7 +1122,10 @@ mod tests {
         assert!(metrics.ttfb_ms.unwrap() >= 20.0);
         assert!(metrics.ttft_ms.unwrap() >= metrics.ttfb_ms.unwrap() + 70.0);
         assert!(metrics.e2e_ms >= metrics.ttft_ms.unwrap() + 90.0);
-        assert_eq!(metrics.decode_ms, Some(metrics.e2e_ms - metrics.ttft_ms.unwrap()));
+        assert_eq!(
+            metrics.decode_ms,
+            Some(metrics.e2e_ms - metrics.ttft_ms.unwrap())
+        );
         assert_eq!(metrics.input_tokens, Some(7));
         assert_eq!(metrics.output_tokens, Some(4));
         assert_eq!(metrics.total_tokens, Some(11));
@@ -908,13 +1133,27 @@ mod tests {
         assert_eq!(metrics.reasoning_tokens, Some(2));
         assert_eq!(metrics.prefill_ms, Some(12.5));
         assert_eq!(metrics.server_decode_ms, Some(47.0));
-        assert_eq!(metrics.output_tps, Some(4000.0 / metrics.decode_ms.unwrap()));
+        assert_eq!(
+            metrics.output_tps,
+            Some(4000.0 / metrics.decode_ms.unwrap())
+        );
         assert_eq!(metrics.tpot_ms, Some(metrics.decode_ms.unwrap() / 3.0));
         assert!(metrics.chunk_interval_mean_ms.unwrap() >= 20.0);
-        assert_eq!(metrics.chunk_interval_max_ms, metrics.chunk_interval_mean_ms);
+        assert_eq!(
+            metrics.chunk_interval_max_ms,
+            metrics.chunk_interval_mean_ms
+        );
         assert_eq!(metrics.chunk_interval_stddev_ms, Some(0.0));
         let serialized = serde_json::to_value(metrics).unwrap();
-        for name in ["connection_ms", "dns_ms", "tcp_ms", "tls_ms", "itl_mean_ms", "itl_max_ms", "itl_stddev_ms"] {
+        for name in [
+            "connection_ms",
+            "dns_ms",
+            "tcp_ms",
+            "tls_ms",
+            "itl_mean_ms",
+            "itl_max_ms",
+            "itl_stddev_ms",
+        ] {
             assert!(serialized[name].is_null(), "{name}");
         }
         let request = task.await.unwrap();
@@ -923,8 +1162,10 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_clean_finished_stream_and_retains_zero_usage() {
-        let body = format!("{}data: {{\"usage\":{{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0}}}}\n\n",
-            event(serde_json::json!({"content":"Hi"}), Some("length")));
+        let body = format!(
+            "{}data: {{\"usage\":{{\"prompt_tokens\":0,\"completion_tokens\":0,\"total_tokens\":0}}}}\n\n",
+            event(serde_json::json!({"content":"Hi"}), Some("length"))
+        );
         let (base, task) = server("200 OK", &body).await;
         let result = complete(&http_client().unwrap(), payload(base, "off"), |_| Ok(())).await;
         assert!(result.error.is_none(), "{:?}", result.error);
@@ -949,16 +1190,28 @@ mod tests {
             (b"".as_slice(), 100),
             (b"data: \xff\n\n".as_slice(), 0),
         ] {
-            let (base, task) = stream_server("200 OK", vec![
-                (Duration::ZERO, first.as_bytes().to_vec()),
-                (Duration::from_millis(10), tail.to_vec()),
-            ], missing_bytes).await;
+            let (base, task) = stream_server(
+                "200 OK",
+                vec![
+                    (Duration::ZERO, first.as_bytes().to_vec()),
+                    (Duration::from_millis(10), tail.to_vec()),
+                ],
+                missing_bytes,
+            )
+            .await;
             let mut deltas = Vec::new();
             let result = complete(&http_client().unwrap(), payload(base, "off"), |delta| {
                 deltas.push(delta);
                 Ok(())
-            }).await;
-            assert_eq!(deltas, vec![CompletionDelta { content: "partial".into(), reasoning: "".into() }]);
+            })
+            .await;
+            assert_eq!(
+                deltas,
+                vec![CompletionDelta {
+                    content: "partial".into(),
+                    reasoning: "".into()
+                }]
+            );
             assert!(result.error.is_some());
             assert_eq!(result.message.unwrap().content, "partial");
             assert_eq!(result.metrics.http_status, Some(200));
@@ -972,11 +1225,19 @@ mod tests {
     #[tokio::test]
     async fn records_body_timeout_and_connection_failure() {
         let first = event(serde_json::json!({"content":"partial"}), None);
-        let (base, task) = stream_server("200 OK", vec![
-            (Duration::ZERO, first.into_bytes()),
-            (Duration::from_millis(250), completion("late").into_bytes()),
-        ], 0).await;
-        let client = Client::builder().timeout(Duration::from_millis(100)).build().unwrap();
+        let (base, task) = stream_server(
+            "200 OK",
+            vec![
+                (Duration::ZERO, first.into_bytes()),
+                (Duration::from_millis(250), completion("late").into_bytes()),
+            ],
+            0,
+        )
+        .await;
+        let client = Client::builder()
+            .timeout(Duration::from_millis(100))
+            .build()
+            .unwrap();
         let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
         assert!(result.error.unwrap().contains("timed out"));
         assert!(result.metrics.timed_out);
@@ -1002,13 +1263,19 @@ mod tests {
         let mut stream = CompletionStream::default();
         let mut done = false;
         for byte in body.as_bytes() {
-            done |= decoder.feed(std::slice::from_ref(byte), |data| stream.event(data, 1.0, &mut |_| Ok(()))).unwrap();
+            done |= decoder
+                .feed(std::slice::from_ref(byte), |data| {
+                    stream.event(data, 1.0, &mut |_| Ok(()))
+                })
+                .unwrap();
         }
         assert!(done);
         assert!(stream.validate().is_ok());
         assert_eq!(stream.text, "Hé\n世界");
         let mut decoder = SseDecoder::default();
-        let error = decoder.feed(&vec![b'x'; MAX_SSE_EVENT_BYTES + 1], |_| Ok(false)).unwrap_err();
+        let error = decoder
+            .feed(&vec![b'x'; MAX_SSE_EVENT_BYTES + 1], |_| Ok(false))
+            .unwrap_err();
         assert!(error.contains("oversized"));
         assert!(decoder.line.len() <= MAX_SSE_EVENT_BYTES);
     }
@@ -1018,18 +1285,34 @@ mod tests {
         for tokens in [None, Some(0), Some(1), Some(2)] {
             for end_ms in [10.0, 30.0] {
                 let stream = CompletionStream {
-                    metrics: CompletionMetrics { ttft_ms: Some(10.0), output_tokens: tokens, ..Default::default() },
+                    metrics: CompletionMetrics {
+                        ttft_ms: Some(10.0),
+                        output_tokens: tokens,
+                        ..Default::default()
+                    },
                     ..Default::default()
                 };
                 let metrics = stream.finish(end_ms, None).metrics;
                 assert_eq!(metrics.decode_ms, Some(end_ms - 10.0));
-                assert_eq!(metrics.tpot_ms, tokens.filter(|count| *count > 1).map(|count| (end_ms - 10.0) / (count - 1) as f64));
-                assert_eq!(metrics.output_tps, tokens.filter(|count| *count > 0 && end_ms > 10.0).map(|count| count as f64 * 1000.0 / (end_ms - 10.0)));
+                assert_eq!(
+                    metrics.tpot_ms,
+                    tokens
+                        .filter(|count| *count > 1)
+                        .map(|count| (end_ms - 10.0) / (count - 1) as f64)
+                );
+                assert_eq!(
+                    metrics.output_tps,
+                    tokens
+                        .filter(|count| *count > 0 && end_ms > 10.0)
+                        .map(|count| count as f64 * 1000.0 / (end_ms - 10.0))
+                );
                 assert_eq!(metrics.itl_mean_ms, None);
             }
         }
         let mut intervals = ChunkIntervals::default();
-        for elapsed in [0.0, 10.0, 30.0, 60.0] { intervals.record(elapsed); }
+        for elapsed in [0.0, 10.0, 30.0, 60.0] {
+            intervals.record(elapsed);
+        }
         assert_eq!(intervals.count, 3);
         assert_eq!(intervals.mean, 20.0);
         assert_eq!(intervals.max, 30.0);
@@ -1041,7 +1324,9 @@ mod tests {
         for value in ["null", "0", "-1", "2.5", "\"32768\"", "{}", "[]", "true"] {
             let body = format!("{{\"data\":[{{\"id\":\"local\",\"context_length\":{value}}}]}}");
             let (base_url, task) = server("200 OK", &body).await;
-            let models = fetch_models(&http_client().unwrap(), Provider { base_url }).await.unwrap();
+            let models = fetch_models(&http_client().unwrap(), Provider { base_url })
+                .await
+                .unwrap();
             assert_eq!(models[0].context_length, None, "{value}");
             task.await.unwrap();
         }
@@ -1164,7 +1449,8 @@ mod tests {
             assert!(
                 complete(&client, request, |_| Ok(()))
                     .await
-                    .error.unwrap()
+                    .error
+                    .unwrap()
                     .contains("nonblank")
             );
         }
