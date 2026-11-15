@@ -48,9 +48,9 @@ function MetricSection({
 }
 
 const WATERFALL_STAGES = [
-  ["Waiting for first byte (TTFB)", "bg-chart-2"],
-  ["Until first visible content", "bg-chart-4"],
-  ["Decode window", "bg-chart-5"],
+  ["Waiting for first byte (TTFB)", "bg-sky-500"],
+  ["Until first visible content", "bg-amber-500"],
+  ["Decode window", "bg-emerald-500"],
 ] as const
 
 function LatencyWaterfall({ metrics }: { metrics: CompletionMetrics }) {
