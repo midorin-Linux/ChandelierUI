@@ -328,3 +328,18 @@
 .hljs-strong {
   @apply font-bold;
 }
+
+/* Sidebar easing: fast start, long soft landing. */
+:is(
+  [data-slot="sidebar-gap"],
+  [data-slot="sidebar-container"],
+  [data-slot="sidebar"][data-mobile="true"]
+) {
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
+  @media (prefers-reduced-motion: reduce) {
+    transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
+  }
+}

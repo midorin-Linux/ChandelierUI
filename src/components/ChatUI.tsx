@@ -34,7 +34,7 @@ export function ChatUI({
   }, [messages, partialMessage, isPending, error])
   return (
     <div
-      className="min-h-0 w-screen flex-1 overflow-y-auto scroll-pb-[var(--composer-height,0px)]"
+      className="min-h-0 w-full flex-1 overflow-y-auto scroll-pb-[var(--composer-height,0px)]"
       role="log"
       aria-label="Conversation"
       aria-live="polite"
