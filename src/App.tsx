@@ -19,6 +19,7 @@ import type {
   Effort,
   ProviderChatRequest,
 } from "@/src/types/chat"
+import {ThemeProvider} from "@/src/components/ThemeProvider.tsx";
 
 function App() {
   const [providerUrl, setProviderUrl] = useState("")
@@ -135,68 +136,70 @@ function App() {
 
   return (
     <>
-      <div className="flex h-screen w-screen justify-center">
-        <div className="flex min-h-0 w-full flex-col">
-          <div className="flex shrink-0 justify-end gap-2 px-4 py-2 border-b">
-            <ProviderSettings
-              providerUrl={providerUrl}
-              setProviderUrl={setProviderUrl}
-              providerUrlInput={providerUrlInput}
-              setProviderUrlInput={setProviderUrlInput}
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={selectModel}
-              modelsLoading={modelsLoading}
-              modelsStatus={modelsStatus}
-              onRefreshModels={refreshModels}
-            />
-            <Analysis
-              payload={buildPayload(messages)}
-              attempts={attempts}
-              isPending={isPending}
-            />
-          </div>
-          <div className="relative flex min-h-0 w-screen flex-1 flex-col">
-            <ChatUI
-              messages={messages}
-              partialMessage={stream.message}
-              isPending={isPending}
-              error={error}
-              canSend={canSend}
-              onRetry={() => void requestCompletion(messages, true)}
-            />
-            <div
-              className="absolute bottom-0 left-1/2 w-full max-w-4xl -translate-x-1/2 border-x border-transparent"
-              ref={(node) => {
-                if (!node) return
-                const observer = new ResizeObserver(() => {
-                  node.parentElement?.style.setProperty(
-                    "--composer-height",
-                    `${node.offsetHeight}px`
-                  )
-                })
-                observer.observe(node)
-                return () => observer.disconnect()
-              }}
-            >
-              <MessageBox
+      <ThemeProvider defaultTheme="system">
+        <div className="flex h-screen w-screen justify-center">
+          <div className="flex min-h-0 w-full flex-col">
+            <div className="flex shrink-0 justify-end gap-2 px-4 py-2 border-b">
+              <ProviderSettings
+                providerUrl={providerUrl}
+                setProviderUrl={setProviderUrl}
+                providerUrlInput={providerUrlInput}
+                setProviderUrlInput={setProviderUrlInput}
                 models={models}
+                selectedModel={selectedModel}
+                onModelChange={selectModel}
                 modelsLoading={modelsLoading}
                 modelsStatus={modelsStatus}
                 onRefreshModels={refreshModels}
-                selectedModel={selectedModel}
-                onModelChange={selectModel}
-                selectedEffort={selectedEffort}
-                onEffortChange={setSelectedEffort}
-                systemPrompt={systemPrompt}
-                onSystemPromptChange={setSystemPrompt}
-                onSend={sendMessage}
+              />
+              <Analysis
+                payload={buildPayload(messages)}
+                attempts={attempts}
                 isPending={isPending}
               />
             </div>
+            <div className="relative flex min-h-0 w-screen flex-1 flex-col">
+              <ChatUI
+                messages={messages}
+                partialMessage={stream.message}
+                isPending={isPending}
+                error={error}
+                canSend={canSend}
+                onRetry={() => void requestCompletion(messages, true)}
+              />
+              <div
+                className="absolute bottom-0 left-1/2 w-full max-w-4xl -translate-x-1/2 border-x border-transparent"
+                ref={(node) => {
+                  if (!node) return
+                  const observer = new ResizeObserver(() => {
+                    node.parentElement?.style.setProperty(
+                      "--composer-height",
+                      `${node.offsetHeight}px`
+                    )
+                  })
+                  observer.observe(node)
+                  return () => observer.disconnect()
+                }}
+              >
+                <MessageBox
+                  models={models}
+                  modelsLoading={modelsLoading}
+                  modelsStatus={modelsStatus}
+                  onRefreshModels={refreshModels}
+                  selectedModel={selectedModel}
+                  onModelChange={selectModel}
+                  selectedEffort={selectedEffort}
+                  onEffortChange={setSelectedEffort}
+                  systemPrompt={systemPrompt}
+                  onSystemPromptChange={setSystemPrompt}
+                  onSend={sendMessage}
+                  isPending={isPending}
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </ThemeProvider>
     </>
   )
 }
