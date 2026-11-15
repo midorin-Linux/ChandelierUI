@@ -34,7 +34,7 @@ export function useModels(providerUrl: string) {
       : modelsLoading
         ? "Loading models…"
         : !providerUrl.trim()
-          ? "Enter a provider URL and press Enter to load models."
+          ? "Enter a provider URL and press Enter or click Refresh to load models."
           : models.length === 0
             ? "The provider returned no models."
             : `${models.length} models loaded.`

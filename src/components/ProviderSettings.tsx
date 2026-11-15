@@ -42,6 +42,13 @@ export function ProviderSettings({
   modelsStatus: string
   onRefreshModels: () => void
 }) {
+  function refreshModels() {
+    const url = providerUrlInput.trim()
+    if (!url) return
+    if (url === providerUrl) onRefreshModels()
+    else setProviderUrl(url)
+  }
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -73,10 +80,7 @@ export function ProviderSettings({
               onKeyDown={(event) => {
                 if (!isSubmitEnter(event)) return
                 event.preventDefault()
-                const url = providerUrlInput.trim()
-                if (!url) return
-                if (url === providerUrl) onRefreshModels()
-                else setProviderUrl(url)
+                refreshModels()
               }}
             />
           </Field>
@@ -113,7 +117,7 @@ export function ProviderSettings({
                 className="size-8! shrink-0"
                 aria-label="Refresh models"
                 disabled={modelsLoading}
-                onClick={onRefreshModels}
+                onClick={refreshModels}
               >
                 <RotateCcw />
               </Button>

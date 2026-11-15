@@ -104,7 +104,7 @@ function App() {
     if (inFlight.current || !content.trim()) return false
     if (!canSend) {
       setError(
-        `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter, and select a model.`
+        `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter or Refresh, and select a model.`
       )
       return false
     }
