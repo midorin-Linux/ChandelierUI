@@ -47,7 +47,7 @@ export function ProviderSettings({
   onRefreshModels: () => void
 }) {
   const [open, setOpen] = useState(false)
-  const canClose = !modelsLoading && !!selectedModel
+  const canContinue = !modelsLoading && !!selectedModel
 
   function refreshModels() {
     const url = providerUrlInput.trim()
@@ -57,12 +57,7 @@ export function ProviderSettings({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen || canClose) setOpen(nextOpen)
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline">Provider settings</Button>
       </DialogTrigger>
@@ -148,7 +143,7 @@ export function ProviderSettings({
               type="button"
               variant="default"
               className="w-full shrink-0"
-              disabled={!canClose}
+              disabled={!canContinue}
             >
               Continue
             </Button>
