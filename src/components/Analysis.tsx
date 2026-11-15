@@ -152,10 +152,7 @@ export function Analysis({
       <SheetTrigger asChild>
         <Button variant="outline">Analysis</Button>
       </SheetTrigger>
-      <SheetContent
-        showCloseButton={false}
-        className="min-h-0 data-[side=right]:w-full! data-[side=right]:sm:max-w-3xl!"
-      >
+      <SheetContent className="min-h-0 data-[side=right]:w-full! data-[side=right]:sm:max-w-3xl!">
         <SheetHeader className="shrink-0">
           <SheetTitle>Analysis</SheetTitle>
         </SheetHeader>
@@ -205,7 +202,7 @@ export function Analysis({
                 </Note>
               </div>
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3">
                   <Kpi
                     label="TTFT"
                     value={formatMetric(metrics.ttft_ms, "ms")}

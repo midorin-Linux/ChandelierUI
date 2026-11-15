@@ -34,12 +34,12 @@ export function ChatUI({
   }, [messages, partialMessage, isPending, error])
   return (
     <div
-      className="min-h-0 w-full flex-1 overflow-y-auto scroll-pb-[var(--composer-height,0px)]"
+      className="min-h-0 w-full flex-1 overflow-y-auto text-[0.9rem] scroll-pb-[var(--composer-height,0px)]"
       role="log"
       aria-label="Conversation"
       aria-live="polite"
     >
-      <div className="mx-auto w-full max-w-4xl border-x border-transparent p-4 pb-[calc(var(--composer-height,0px)+1rem)]">
+      <div className="mx-auto w-full max-w-3xl border-x border-transparent p-4 pb-[calc(var(--composer-height,0px)+1rem)]">
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Start a conversation. Messages stay in this window only.

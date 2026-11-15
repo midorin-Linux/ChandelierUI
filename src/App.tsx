@@ -179,7 +179,7 @@ function App() {
                   onRetry={() => void requestCompletion(messages, true)}
                 />
                 <div
-                  className="absolute bottom-0 left-1/2 w-full max-w-4xl -translate-x-1/2 border-x border-transparent"
+                  className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
                   ref={(node) => {
                     if (!node) return
                     const observer = new ResizeObserver(() => {
