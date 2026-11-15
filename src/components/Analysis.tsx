@@ -211,12 +211,12 @@ export function Analysis({
                     value={formatMetric(metrics.ttft_ms, "ms")}
                   />
                   <Kpi
-                    label="End to end"
+                    label="E2E Latency"
                     value={formatMetric(metrics.e2e_ms, "ms")}
                   />
                   <Kpi
                     label="Output TPS"
-                    value={formatMetric(metrics.output_tps, "tokens/s")}
+                    value={formatMetric(metrics.output_tps, "tps")}
                   />
                   <Kpi
                     label="Total tokens"
