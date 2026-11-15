@@ -140,10 +140,14 @@ impl CompletionStream {
             if usage.total_tokens.is_some() {
                 self.metrics.total_tokens = usage.total_tokens;
             }
-            if let Some(details) = usage.prompt_tokens_details && details.cached_tokens.is_some() {
+            if let Some(details) = usage.prompt_tokens_details
+                && details.cached_tokens.is_some()
+            {
                 self.metrics.cached_tokens = details.cached_tokens;
             }
-            if let Some(details) = usage.completion_tokens_details && details.reasoning_tokens.is_some() {
+            if let Some(details) = usage.completion_tokens_details
+                && details.reasoning_tokens.is_some()
+            {
                 self.metrics.reasoning_tokens = details.reasoning_tokens;
             }
         }
