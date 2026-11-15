@@ -1,6 +1,7 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
 import { Button } from "@/src/components/ui/button"
+import { Progress } from "@/src/components/ui/progress"
 import {
   Sheet,
   SheetContent,
@@ -21,7 +22,7 @@ import {
   providerLocation,
   summarizeAttempts,
 } from "@/src/lib/analysis"
-import type { CompletionAttempt } from "@/src/types/analysis"
+import type { CompletionAttempt, CompletionMetrics } from "@/src/types/analysis"
 import type { ProviderChatRequest } from "@/src/types/chat"
 
 function MetricSection({
@@ -43,6 +44,68 @@ function MetricSection({
         ))}
       </dl>
     </section>
+  )
+}
+
+const WATERFALL_STAGES = [
+  ["Waiting for first byte (TTFB)", "bg-chart-2"],
+  ["Until first visible content", "bg-chart-4"],
+  ["Decode window", "bg-chart-5"],
+] as const
+
+function LatencyWaterfall({ metrics }: { metrics: CompletionMetrics }) {
+  const { ttfb_ms, ttft_ms, e2e_ms } = metrics
+  // ttfb, ttft and e2e are cumulative from request start (ttfb <= ttft <= e2e).
+  const first = ttfb_ms ?? ttft_ms
+  const content = ttft_ms ?? first
+  const values = [
+    first,
+    first !== null && content !== null ? Math.max(content - first, 0) : null,
+    content !== null ? Math.max(e2e_ms - content, 0) : null,
+  ]
+  const total = values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
+  if (total <= 0) return null
+  return (
+    <div className="space-y-2">
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+        {values.map((v, i) =>
+          v ? (
+            <div
+              key={WATERFALL_STAGES[i][0]}
+              className={WATERFALL_STAGES[i][1]}
+              style={{ width: `${(v / total) * 100}%` }}
+              title={`${WATERFALL_STAGES[i][0]}: ${formatMetric(v, "ms")}`}
+            />
+          ) : null
+        )}
+      </div>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {values.map((v, i) => (
+          <li
+            key={WATERFALL_STAGES[i][0]}
+            className="flex items-center gap-1.5"
+          >
+            <span
+              className={`size-2 rounded-full ${WATERFALL_STAGES[i][1]}`}
+              aria-hidden
+            />
+            {WATERFALL_STAGES[i][0]}:{" "}
+            <span className="tabular-nums">{formatMetric(v, "ms")}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function ContextBar({ percent }: { percent: number | null }) {
+  if (percent === null) return null
+  return (
+    <Progress
+      value={Math.min(percent, 100)}
+      aria-label="Context utilization"
+      className={`h-2 ${percent >= 80 ? "[&>div]:bg-destructive" : ""}`}
+    />
   )
 }
 
@@ -225,6 +288,7 @@ export function Analysis({
             <TabsContent value="latency" className="space-y-6">
               {selected && metrics && location && (
                 <>
+                  <LatencyWaterfall metrics={metrics} />
                   <MetricSection
                     title="Latency"
                     rows={[
@@ -361,6 +425,12 @@ export function Analysis({
                         ),
                       ],
                     ]}
+                  />
+                  <ContextBar
+                    percent={contextUtilization(
+                      metrics.input_tokens,
+                      selected.context_length
+                    )}
                   />
                   <Note>
                     Usage is API-reported, not locally estimated. Missing values
