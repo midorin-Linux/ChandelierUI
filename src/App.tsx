@@ -1,258 +1,165 @@
-import { useState } from "react"
-import { AppLayout } from "./components/AppLayout"
-import { Sidebar } from "./components/Sidebar"
-import type { SessionAction } from "./components/ChatView"
-import { ChatWorkspace } from "./components/ChatWorkspace"
-import { Button } from "./components/ui/button"
-import { useSessions } from "./hooks/useSessions"
-import { useChat } from "./hooks/useChat"
-import { SettingsView } from "./components/SettingsView"
-import { useSettings } from "./hooks/useSettings"
-import { usePreferences } from "./hooks/usePreferences"
 import "./App.css"
-import "./components/workspace.css"
-import "./components/settings.css"
+import { useRef, useState } from "react"
+import { invoke, isTauri } from "@tauri-apps/api/core"
+import { Analysis } from "@/src/components/Analysis"
+import { ChatUI } from "@/src/components/ChatUI"
+import { MessageBox } from "@/src/components/MessageBox"
+import { ProviderSettings } from "@/src/components/ProviderSettings"
+import { useModels } from "@/src/hooks/useModels"
+import { emptyMetrics } from "@/src/lib/analysis"
+import { errorMessage } from "@/src/lib/utils"
+import type {
+  CompletionAttempt,
+  MeasuredCompletion,
+} from "@/src/types/analysis"
+import type { ChatMessage, Effort, ProviderChatRequest } from "@/src/types/chat"
 
 function App() {
-  const workspace = useSessions()
-  const settings = useSettings()
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [newTitle, setNewTitle] = useState("")
-  const [renameTitle, setRenameTitle] = useState("")
-  const [action, setAction] = useState<SessionAction>("none")
-  const { bootstrap, detail, isMutating } = workspace
-  const sessionDetail = detail.data
-  const chat = useChat(
-    sessionDetail,
-    bootstrap.data?.models ?? [],
-    isMutating || settings.pending !== null || action !== "none"
-  )
-  const editingDisabled =
-    isMutating || settings.pending !== null || chat.busy || chat.isModelUpdating
-  const chatDisabled = editingDisabled || !chat.hasModel || action !== "none"
-  usePreferences(bootstrap.data?.settings)
+  const [providerUrl, setProviderUrl] = useState("")
+  const [providerUrlInput, setProviderUrlInput] = useState("")
+  const {
+    models,
+    modelsLoading,
+    selectedModel,
+    modelsStatus,
+    selectModel,
+    refreshModels,
+  } = useModels(providerUrl)
+  const [selectedEffort, setSelectedEffort] = useState<Effort>("medium")
+  const [systemPrompt, setSystemPrompt] = useState("")
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [isPending, setIsPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [attempts, setAttempts] = useState<CompletionAttempt[]>([])
+  const attemptId = useRef(0)
+  const inFlight = useRef(false)
+  const canSend = !modelsLoading && selectedModel !== ""
 
-  function selectSession(sessionId: string) {
-    workspace.clearMutationError()
-    setAction("none")
-    workspace.selectSession(sessionId)
-    setSettingsOpen(false)
+  function buildPayload(history: ChatMessage[]): ProviderChatRequest {
+    return {
+      provider: { base_url: providerUrl },
+      request: {
+        model: selectedModel,
+        reasoning_effort: selectedEffort,
+        messages: [
+          ...(systemPrompt.trim()
+            ? [{ role: "system" as const, content: systemPrompt }]
+            : []),
+          ...history,
+        ],
+      },
+    }
   }
 
-  function createSession() {
-    workspace.clearMutationError()
-    workspace.create.mutate(newTitle.trim(), {
-      onSuccess: () => {
-        setNewTitle("")
-        setAction("none")
-        setSettingsOpen(false)
+  async function requestCompletion(history: ChatMessage[], retry = false) {
+    if (inFlight.current || !canSend) return
+    inFlight.current = true
+    setIsPending(true)
+    setError(null)
+    const requestPayload = buildPayload(history)
+    const startedAt = new Date().toISOString()
+    const started = performance.now()
+    const id = ++attemptId.current
+    const contextLength =
+      models.find((model) => model.id === selectedModel)?.context_length ?? null
+    let result: MeasuredCompletion
+    try {
+      if (!isTauri()) {
+        throw new Error(
+          "Sending messages requires the Tauri desktop app. Open the desktop app instead of the browser preview."
+        )
+      }
+      result = await invoke<MeasuredCompletion>("chat_completion", {
+        payload: requestPayload,
+      })
+      if (result.error) setError(result.error)
+      else if (result.message) setMessages([...history, result.message])
+    } catch (cause) {
+      const message = errorMessage(cause)
+      setError(message)
+      result = {
+        message: null,
+        error: message,
+        metrics: emptyMetrics(performance.now() - started),
+      }
+    } finally {
+      inFlight.current = false
+      setIsPending(false)
+    }
+    setAttempts((current) => [
+      ...current,
+      {
+        id,
+        started_at: startedAt,
+        retry,
+        concurrency: 1,
+        payload: requestPayload,
+        context_length: contextLength,
+        result,
       },
-    })
+    ])
+  }
+
+  function sendMessage(content: string) {
+    if (inFlight.current || !content.trim()) return false
+    if (!canSend) {
+      setError(
+        `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter, and select a model.`
+      )
+      return false
+    }
+    const history: ChatMessage[] = [...messages, { role: "user", content }]
+    setMessages(history)
+    void requestCompletion(history)
+    return true
   }
 
   return (
     <>
-      <a href="#main-content" className="skip-link">
-        会話へ移動
-      </a>
-      <AppLayout
-        sidebar={
-          <Sidebar
-            sessions={workspace.sessions}
-            selectedSessionId={workspace.selectedSessionId}
-            title={newTitle}
-            loading={bootstrap.isPending}
-            disabled={isMutating || !bootstrap.data || bootstrap.isError}
-            settingsOpen={settingsOpen}
-            onSettingsToggle={() => setSettingsOpen((open) => !open)}
-            onTitleChange={setNewTitle}
-            onCreate={createSession}
-            onSelect={selectSession}
-          />
-        }
-      >
-        {workspace.mutationError && (
-          <div
-            role="alert"
-            className="border-b border-destructive/40 p-4 text-sm text-destructive"
-          >
-            操作に失敗しました：{workspace.mutationError.message}
-          </div>
-        )}
-        {isMutating && (
-          <p
-            role="status"
-            className="border-b px-5 py-2 text-sm text-muted-foreground"
-          >
-            変更を保存中…
-          </p>
-        )}
-        {settingsOpen && bootstrap.data && (
-          <SettingsView
-            data={bootstrap.data}
-            session={sessionDetail?.session}
-            sessionBusy={chat.busy || chat.isModelUpdating || isMutating}
-            generationActive={settings.generationActive}
-            pending={settings.pending}
-            error={settings.error}
-            notice={settings.notice}
-            onBack={() => setSettingsOpen(false)}
-            onSaveProvider={settings.saveProvider}
-            onDeleteProvider={settings.deleteProvider}
-            onTestProvider={settings.testProvider}
-            onRefreshModels={settings.refreshModels}
-            onSaveModel={settings.saveModel}
-            onDeleteModel={settings.deleteModel}
-            onSaveApp={settings.saveApp}
-            onSaveSession={settings.saveSession}
-          />
-        )}
-        <div className="chat-panel" hidden={settingsOpen}>
-          {bootstrap.isPending ? (
-            <p role="status" className="p-6 text-sm text-muted-foreground">
-              アプリのデータを読み込み中…
-            </p>
-          ) : bootstrap.isError ? (
-            <section className="space-y-3 p-6" aria-label="読み込みエラー">
-              <p role="alert" className="text-sm text-destructive">
-                読み込みに失敗しました：{bootstrap.error.message}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={bootstrap.isFetching}
-                onClick={() => {
-                  void bootstrap.refetch()
-                }}
-              >
-                再読み込み
-              </Button>
-            </section>
-          ) : workspace.selectedSessionId === null ? (
-            <section className="space-y-3 p-6">
-              <h2 className="text-lg font-semibold">
-                会話を保存する場所をつくりましょう
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                左側のフォームから新しいセッションを作成してください。
-              </p>
-            </section>
-          ) : detail.isPending ? (
-            <p role="status" className="p-6 text-sm text-muted-foreground">
-              メッセージ履歴を読み込み中…
-            </p>
-          ) : detail.isError ? (
-            <section className="space-y-3 p-6" aria-label="履歴読み込みエラー">
-              <p role="alert" className="text-sm text-destructive">
-                履歴を読み込めませんでした：{detail.error.message}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={detail.isFetching}
-                onClick={() => {
-                  void detail.refetch()
-                }}
-              >
-                再読み込み
-              </Button>
-            </section>
-          ) : sessionDetail ? (
-            <ChatWorkspace
-              key={sessionDetail.session.id}
-              detail={sessionDetail}
-              live={chat.generation}
-              autoScroll={bootstrap.data?.settings.auto_scroll ?? true}
-              visible={!settingsOpen}
-              chatView={{
-                session: sessionDetail.session,
-                messages: chat.messages,
-                action,
-                title: renameTitle,
-                disabled: editingDisabled || chat.editing !== null,
-                refreshing: detail.isFetching,
-                modelSelector: {
-                  models: bootstrap.data?.models ?? [],
-                  providers: bootstrap.data?.providers ?? [],
-                  value: sessionDetail.session.selected_model_id,
-                  disabled:
-                    editingDisabled ||
-                    action !== "none" ||
-                    chat.editing !== null,
-                  onChange: chat.selectModel,
-                },
-                composer: {
-                  id: "chat-input",
-                  label: "メッセージ",
-                  value: chat.draft,
-                  disabled: chatDisabled || chat.editing !== null,
-                  busy: chat.busy,
-                  cancelling: chat.generation?.cancelling,
-                  onChange: chat.setDraft,
-                  onSubmit: chat.send,
-                  onStop: chat.stop,
-                },
-                messageControls: {
-                  disabled: chatDisabled,
-                  editing: chat.editing,
-                  onCopy: chat.copy,
-                  onEdit: chat.startEdit,
-                  onEditContentChange: chat.setEditContent,
-                  onEditSubmit: chat.submitEdit,
-                  onEditCancel: chat.cancelEdit,
-                  onRegenerate: chat.canRegenerate
-                    ? chat.regenerate
-                    : undefined,
-                },
-                status:
-                  chat.generation?.status === "pending"
-                    ? "生成を開始しています…"
-                    : chat.busy
-                      ? "応答を生成中…"
-                      : chat.generation?.status === "cancelled"
-                        ? "生成を停止しました。受信済みの本文は保存されています。"
-                        : chat.isModelUpdating
-                          ? "モデルを保存中…"
-                          : null,
-                error: chat.error,
-                notice: chat.notice,
-                onTitleChange: setRenameTitle,
-                onRenameRequest: () => {
-                  workspace.clearMutationError()
-                  setRenameTitle(sessionDetail.session.title)
-                  setAction("rename")
-                },
-                onRename: () => {
-                  workspace.clearMutationError()
-                  workspace.rename.mutate(
-                    {
-                      session: sessionDetail.session,
-                      title: renameTitle.trim(),
-                    },
-                    {
-                      onSuccess: () => setAction("none"),
-                    }
-                  )
-                },
-                onDeleteRequest: () => {
-                  workspace.clearMutationError()
-                  setAction("delete")
-                },
-                onDelete: () => {
-                  workspace.clearMutationError()
-                  workspace.remove.mutate(sessionDetail.session.id, {
-                    onSuccess: () => setAction("none"),
-                  })
-                },
-                onCancel: () => {
-                  workspace.clearMutationError()
-                  setAction("none")
-                },
-              }}
+      <div className="flex justify-center h-screen">
+        <div className="flex min-h-0 flex-col max-w-4xl w-full border-x">
+          <div className="flex shrink-0 justify-end gap-2 px-4 py-2 border-b">
+            <ProviderSettings
+              providerUrl={providerUrl}
+              setProviderUrl={setProviderUrl}
+              providerUrlInput={providerUrlInput}
+              setProviderUrlInput={setProviderUrlInput}
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={selectModel}
+              modelsLoading={modelsLoading}
+              modelsStatus={modelsStatus}
+              onRefreshModels={refreshModels}
             />
-          ) : null}
+            <Analysis
+              payload={buildPayload(messages)}
+              attempts={attempts}
+              isPending={isPending}
+            />
+          </div>
+          <ChatUI
+            messages={messages}
+            isPending={isPending}
+            error={error}
+            canSend={canSend}
+            onRetry={() => void requestCompletion(messages, true)}
+          />
+          <MessageBox
+            models={models}
+            modelsLoading={modelsLoading}
+            modelsStatus={modelsStatus}
+            onRefreshModels={refreshModels}
+            selectedModel={selectedModel}
+            onModelChange={selectModel}
+            selectedEffort={selectedEffort}
+            onEffortChange={setSelectedEffort}
+            systemPrompt={systemPrompt}
+            onSystemPromptChange={setSystemPrompt}
+            onSend={sendMessage}
+            isPending={isPending}
+          />
         </div>
-      </AppLayout>
+      </div>
     </>
   )
 }
