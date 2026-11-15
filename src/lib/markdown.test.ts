@@ -35,6 +35,60 @@ try {
   assert(rich.includes("hljs-keyword"), "labeled code highlighted")
   assert(!render("```\nconst x = 1\n```").includes("hljs-"), "no auto-detect")
 
+  // The real pipeline renders both LLM delimiter styles, not code lookalikes.
+  for (const source of ["$x^2$", String.raw`\(x^2\)`]) {
+    const math = render(`Before ${source} after`)
+    assert(math.includes('class="katex"'), `inline math: ${source}`)
+    assert(!math.includes("katex-display"), `inline math stays inline: ${source}`)
+    assert(math.includes("<math") && math.includes("katex-html"), "accessible math and visual output")
+    assert(!math.includes("hljs"), "math is not syntax highlighted")
+  }
+  for (const source of ["$$\nx^2\n$$", String.raw`\[x^2\]`, "$$x^2$$"]) {
+    const math = render(source)
+    assert(math.includes('class="katex-display"'), `display math: ${source}`)
+  }
+  const embeddedDisplay = render("Before $$x^2$$ after")
+  assert(
+    /<p>Before<\/p>\s*<span class="katex-display"/.test(embeddedDisplay) &&
+      embeddedDisplay.endsWith("<p>after</p></div>"),
+    "same-line double dollars become a separate display block"
+  )
+  const literalMath = String.raw`$x$ $$x$$ \(x\) \[x\] <tag>`
+  const escapedMath = literalMath.replace("<tag>", "&lt;tag&gt;")
+  const inlineCode = render("`" + literalMath + "`")
+  assert(inlineCode.includes(`<code>${escapedMath}</code>`), "inline code contents unchanged")
+  assert(!inlineCode.includes("katex"), "inline code is not math")
+  for (const language of ["", "math", "language-math", "math-inline", "math-display"]) {
+    const code = render("```" + language + "\n" + literalMath + "\n```")
+    assert(!code.includes("katex"), `fenced ${language || "plain"} code is not math`)
+    assert(
+      /<pre><code[^>]*>/.test(code) && code.includes(`${escapedMath}\n</code></pre>`),
+      `fenced ${language || "plain"} code contents unchanged`
+    )
+  }
+  const indentedCode = render("    " + literalMath)
+  assert(!indentedCode.includes("katex"), "indented code is not math")
+  assert(indentedCode.includes(`${escapedMath}\n</code></pre>`), "indented code contents unchanged")
+  const currency = render("Costs $5 and $10.")
+  assert(!currency.includes("katex") && currency.includes("$5 and $10"), "currency stays literal")
+  assert(!render(String.raw`Escaped \$x\$`).includes("katex"), "escaped dollars stay literal")
+
+  const invalidMath = render(String.raw`$\frac{1}{$`)
+  assert(invalidMath.includes('class="katex-error"'), "invalid expression has error class")
+  assert(invalidMath.includes('style="color:var(--destructive)"'), "math error uses theme color")
+  const recursiveMath = render(String.raw`$\def\loop{\loop}\loop$`)
+  assert(
+    recursiveMath.includes('class="katex-error"') && recursiveMath.includes("Too many expansions"),
+    "recursive macros stop at the expansion budget"
+  )
+  const hugeMath = render(String.raw`$\rule{1000em}{1000em}$`)
+  assert(!hugeMath.includes("katex-error"), "oversized dimensions render safely")
+  assert(
+    hugeMath.includes("border-right-width:10em") &&
+      hugeMath.includes("border-top-width:10em") &&
+      !/style="[^"]*1000em/.test(hugeMath),
+    "rule dimensions are capped at ten em"
+  )
   // Security
   const html = render('<script>alert(1)</script><img src=x onerror="alert(1)">hi')
   assert(!/<script|<img|onerror/i.test(html), "raw HTML is not rendered")
@@ -48,12 +102,36 @@ try {
   const img = render("![cat](https://evil.test/p.png)")
   assert(!img.includes("<img") && !img.includes("evil.test"), "images not loaded")
   assert(img.includes("cat"), "image alt shown")
+  const unsafeMath = render(
+    String.raw`$\href{https://evil.test}{open}+\href{javascript:alert(1)}{run}+\includegraphics{https://evil.test/p.png}$`
+  )
+  assert(!/<a\b|<img\b|\b(?:href|src)=/i.test(unsafeMath), "math cannot create links or images")
+  assert(
+    !render(String.raw`$\global\def\leaked{\text{secret}}$ $\leaked$`).includes("<mtext>secret</mtext>"),
+    "no cross-expression macro state"
+  )
 
   // Incomplete / streaming input must not throw
   for (const partial of ["```ts\nconst x =", "| a | b |\n|---", "**bold", "[x](http", "```unknownlang\nfoo"]) {
     render(partial)
   }
   assert(render("```ts\nconst x =").includes("<pre>"), "unclosed fence renders")
+  for (const partial of [
+    "$",
+    "$x",
+    "$$",
+    "$$\nx + 1",
+    "Before $$x + 1\n\nFollowing prose",
+    String.raw`\[x + 1`,
+    String.raw`\(x + 1`,
+  ]) {
+    const streamed = render(partial)
+    assert(!streamed.includes("katex"), `incomplete math stays literal: ${partial}`)
+  }
+  assert(
+    render("Before $$x + 1\n\nFollowing prose").includes("<p>Following prose</p>"),
+    "incomplete display math does not swallow following prose"
+  )
 } finally {
   await server.close()
 }

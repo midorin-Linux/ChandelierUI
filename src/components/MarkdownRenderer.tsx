@@ -2,6 +2,8 @@ import { memo } from "react"
 import ReactMarkdown from "react-markdown"
 import type { Components } from "react-markdown"
 import { openUrl } from "@tauri-apps/plugin-opener"
+import "katex/dist/katex.min.css"
+import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters"
 import {
   rehypePlugins,
   remarkPlugins,
@@ -52,7 +54,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         urlTransform={urlTransform}
         components={components}
       >
-        {content}
+        {normalizeMathDelimiters(content)}
       </ReactMarkdown>
     </div>
   )

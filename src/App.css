@@ -175,6 +175,16 @@
 .markdown-body td { @apply border border-border px-2 py-1 text-left; }
 .markdown-body th { @apply bg-muted font-medium; }
 [data-slot="markdown-image"] { @apply text-muted-foreground italic; }
+.markdown-body .katex {
+  color: inherit;
+}
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.markdown-body .katex-error {
+  color: var(--destructive);
+}
 
 /* Syntax highlighting (rehype-highlight/highlight.js class names). */
 .hljs-comment,
