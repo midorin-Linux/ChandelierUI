@@ -195,6 +195,7 @@ function App() {
                     modelsLoading={modelsLoading}
                     modelsStatus={modelsStatus}
                     onRefreshModels={refreshModels}
+                    onOpenProviderSettings={() => setSettingsOpen(true)}
                     selectedModel={selectedModel}
                     onModelChange={selectModel}
                     selectedEffort={selectedEffort}

@@ -5,7 +5,11 @@ import {
   FieldLegend,
   FieldSet,
 } from "@/src/components/ui/field"
-import { DialogContent, DialogTitle } from "@/src/components/ui/dialog"
+import {
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { ScrollArea } from "@/src/components/ui/scroll-area"
 import { Slider } from "@/src/components/ui/slider"
@@ -18,6 +22,7 @@ export interface ModelSettingProps {
   modelsLoading: boolean
   modelsStatus: string
   onRefreshModels: () => void
+  onOpenProviderSettings: () => void
   selectedModel: string
   onModelChange: (model: string) => void
   selectedEffort: Effort
@@ -31,6 +36,7 @@ export function ModelSetting({
   modelsLoading,
   modelsStatus,
   onRefreshModels,
+  onOpenProviderSettings,
   selectedModel,
   onModelChange,
   selectedEffort,
@@ -46,7 +52,7 @@ export function ModelSetting({
         </DialogTitle>
       </header>
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <section className="flex w-1/3 min-h-0 min-w-0 flex-col border-r p-2">
+        <section className="flex w-1/3 min-h-0 min-w-0 flex-col border-r pr-4 py-2">
           <h2 className="px-2 py-1 text-sm font-medium">Models</h2>
           <p role="status" className="px-2 py-1 text-sm text-muted-foreground">
             {modelsStatus}
@@ -59,6 +65,13 @@ export function ModelSetting({
           >
             Refresh models
           </Button>
+          {models.length === 0 && (
+            <DialogClose asChild>
+              <Button variant="default" onClick={onOpenProviderSettings}>
+                Provider settings
+              </Button>
+            </DialogClose>
+          )}
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-1 pr-3">
               {models.map((model) => (
@@ -79,7 +92,7 @@ export function ModelSetting({
           <div className="px-4 pt-2"></div>
           <div className="flex min-h-0 flex-1 flex-col justify-between">
             <ScrollArea className="min-h-0 flex-1">
-              <Field className="px-4">
+              <Field className="pl-4">
                 <FieldSet>
                   <FieldLegend>{selectedModel || "Select a model"}</FieldLegend>
                   <FieldGroup>
