@@ -40,6 +40,20 @@ function MetricSection({
   )
 }
 
+function Kpi({ label, value }: { label: string; value: string }) {
+  const unavailable = value === "Unavailable"
+  return (
+    <div className="min-w-0 rounded-lg border p-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div
+        className={`truncate text-2xl font-semibold tabular-nums ${unavailable ? "text-muted-foreground" : ""}`}
+      >
+        {unavailable ? "—" : value}
+      </div>
+    </div>
+  )
+}
+
 function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs text-muted-foreground">{children}</p>
 }
@@ -120,6 +134,35 @@ export function Analysis({
                   Showing the saved snapshot for attempt #{selected.id}. Editing
                   the current request does not change these measurements.
                 </Note>
+              </div>
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <Kpi
+                    label="TTFT"
+                    value={formatMetric(metrics.ttft_ms, "ms")}
+                  />
+                  <Kpi
+                    label="End to end"
+                    value={formatMetric(metrics.e2e_ms, "ms")}
+                  />
+                  <Kpi
+                    label="Output TPS"
+                    value={formatMetric(metrics.output_tps, "tokens/s")}
+                  />
+                  <Kpi
+                    label="Total tokens"
+                    value={formatMetric(metrics.total_tokens, "tokens", 0)}
+                  />
+                </div>
+                {isFailed(selected) && (
+                  <p
+                    role="status"
+                    className="rounded-md border border-destructive/50 px-3 py-2 text-sm text-destructive"
+                  >
+                    Failed{metrics.timed_out ? " · Timed out" : ""}
+                    {selected.result.error ? ` · ${selected.result.error}` : ""}
+                  </p>
+                )}
               </div>
               <MetricSection
                 title="Request snapshot"
