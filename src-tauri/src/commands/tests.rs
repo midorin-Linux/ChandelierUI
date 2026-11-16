@@ -6,7 +6,7 @@ use tokio::{
 };
 
 use super::{
-    client::{complete, endpoint, fetch_models, http_client, http_client_with_timeout},
+    client::{complete, endpoint, fetch_models, http_client, http_client_with_timeouts},
     metrics::{ChunkIntervals, CompletionMetrics},
     sse::{MAX_SSE_EVENT_BYTES, SseDecoder},
     stream::CompletionStream,
@@ -527,7 +527,8 @@ async fn records_body_timeout_and_connection_failure() {
         0,
     )
     .await;
-    let client = http_client_with_timeout(Duration::from_millis(100)).unwrap();
+    let client =
+        http_client_with_timeouts(Duration::from_secs(5), Duration::from_millis(100)).unwrap();
     let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
     assert!(result.error.unwrap().contains("timed out"));
     assert!(result.metrics.timed_out);
@@ -868,4 +869,39 @@ fn allows_empty_trailing_choice_after_finish_reason_but_rejects_content_or_confl
         let err = s.event(bad_after, 20.0, &mut emit).unwrap_err();
         assert!(err.contains("after its finish reason"), "{err}");
     }
+}
+
+#[tokio::test]
+async fn allows_long_streams_within_chunk_timeout_and_enforces_connect_timeout() {
+    let chunk = event(serde_json::json!({"content":"a"}), None).into_bytes();
+    let (base, task) = stream_server(
+        "200 OK",
+        vec![
+            (Duration::from_millis(60), chunk.clone()),
+            (Duration::from_millis(60), chunk),
+            (Duration::from_millis(60), completion("done").into_bytes()),
+        ],
+        0,
+    )
+    .await;
+    let client =
+        http_client_with_timeouts(Duration::from_secs(5), Duration::from_millis(120)).unwrap();
+    let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
+    assert_eq!(result.error, None);
+    assert!(result.metrics.e2e_ms >= 150.0);
+    task.await.unwrap();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("https://{}/v1", listener.local_addr().unwrap());
+    let server_task = tokio::spawn(async move {
+        let (_socket, _) = listener.accept().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    });
+    let slow_connect =
+        http_client_with_timeouts(Duration::from_millis(80), Duration::from_secs(5)).unwrap();
+    let result = complete(&slow_connect, payload(base, "off"), |_| Ok(())).await;
+    assert!(result.error.unwrap().contains("timed out"));
+    assert!(result.metrics.timed_out);
+    assert_eq!(result.metrics.http_status, None);
+    server_task.await.unwrap();
 }

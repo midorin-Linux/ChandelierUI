@@ -10,7 +10,7 @@ use http_body_util::{BodyExt, Full};
 use hyper_util::rt::TokioIo;
 use reqwest::{Client, Url, redirect::Policy};
 use rustls_pki_types::ServerName;
-use tokio::{net::TcpStream, time::timeout_at};
+use tokio::{net::TcpStream, time::timeout};
 use tokio_rustls::TlsConnector;
 
 use super::{
@@ -20,12 +20,14 @@ use super::{
     types::{ChatPayload, CompletionDelta, Model, Models, Provider, StreamOptions, WireRequest},
 };
 
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const CHUNK_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub struct HttpClient {
     models: Client,
     tls: Arc<rustls::ClientConfig>,
-    timeout: Duration,
+    connect_timeout: Duration,
+    chunk_timeout: Duration,
 }
 
 fn tls_config() -> Arc<rustls::ClientConfig> {
@@ -48,18 +50,23 @@ fn tls_config() -> Arc<rustls::ClientConfig> {
 }
 
 pub fn http_client() -> Result<HttpClient, reqwest::Error> {
-    http_client_with_timeout(REQUEST_TIMEOUT)
+    http_client_with_timeouts(CONNECT_TIMEOUT, CHUNK_TIMEOUT)
 }
 
-pub(super) fn http_client_with_timeout(timeout: Duration) -> Result<HttpClient, reqwest::Error> {
+pub(super) fn http_client_with_timeouts(
+    connect_timeout: Duration,
+    chunk_timeout: Duration,
+) -> Result<HttpClient, reqwest::Error> {
     let models = Client::builder()
-        .timeout(timeout)
+        .connect_timeout(connect_timeout)
+        .timeout(chunk_timeout)
         .redirect(Policy::none())
         .build()?;
     Ok(HttpClient {
         models,
         tls: tls_config(),
-        timeout,
+        connect_timeout,
+        chunk_timeout,
     })
 }
 
@@ -139,12 +146,16 @@ where
     sender.send_request(request).await.map_err(|_| ())
 }
 
-async fn open_and_send(
+enum StreamConn {
+    Tcp(TcpStream),
+    Tls(Box<tokio_rustls::client::TlsStream<TcpStream>>),
+}
+
+async fn connect_stream(
     url: &Url,
-    client: &HttpClient,
-    request: http::Request<Full<Bytes>>,
+    tls: &Arc<rustls::ClientConfig>,
     metrics: &mut CompletionMetrics,
-) -> Result<http::Response<hyper::body::Incoming>, ()> {
+) -> Result<StreamConn, ()> {
     let port = url.port_or_known_default().ok_or(())?;
     let host_str = url.host_str().ok_or(())?.trim_matches(['[', ']']);
     let conn_started = Instant::now();
@@ -180,16 +191,16 @@ async fn open_and_send(
             None => ServerName::try_from(host_str.to_owned()).map_err(|_| ())?,
         };
         let tls_started = Instant::now();
-        let tls_stream = TlsConnector::from(client.tls.clone())
+        let tls_stream = TlsConnector::from(tls.clone())
             .connect(server_name, tcp)
             .await
             .map_err(|_| ())?;
         metrics.tls_ms = Some(tls_started.elapsed().as_secs_f64() * 1000.0);
         metrics.connection_ms = Some(conn_started.elapsed().as_secs_f64() * 1000.0);
-        send_http1(tls_stream, request).await
+        Ok(StreamConn::Tls(Box::new(tls_stream)))
     } else {
         metrics.connection_ms = Some(conn_started.elapsed().as_secs_f64() * 1000.0);
-        send_http1(tcp, request).await
+        Ok(StreamConn::Tcp(tcp))
     }
 }
 
@@ -239,7 +250,6 @@ pub(super) async fn complete(
     };
     let mut stream = CompletionStream::default();
     let started = Instant::now();
-    let deadline = tokio::time::Instant::now() + client.timeout;
     let Ok(http_request) =
         build_chat_request(&url, Bytes::from(body), payload.provider.api_key.as_deref())
     else {
@@ -248,12 +258,34 @@ pub(super) async fn complete(
             Some("Could not reach the chat provider.".into()),
         );
     };
-    let response = match timeout_at(
-        deadline,
-        open_and_send(&url, client, http_request, &mut stream.metrics),
+    let conn = match timeout(
+        client.connect_timeout,
+        connect_stream(&url, &client.tls, &mut stream.metrics),
     )
     .await
     {
+        Ok(Ok(conn)) => conn,
+        Ok(Err(())) => {
+            return stream.finish(
+                started.elapsed().as_secs_f64() * 1000.0,
+                Some("Could not reach the chat provider.".into()),
+            );
+        }
+        Err(_) => {
+            stream.metrics.timed_out = true;
+            return stream.finish(
+                started.elapsed().as_secs_f64() * 1000.0,
+                Some("Chat connection timed out.".into()),
+            );
+        }
+    };
+    let send_fut = async {
+        match conn {
+            StreamConn::Tcp(tcp) => send_http1(tcp, http_request).await,
+            StreamConn::Tls(tls_stream) => send_http1(tls_stream, http_request).await,
+        }
+    };
+    let response = match timeout(client.chunk_timeout, send_fut).await {
         Ok(Ok(response)) => response,
         Ok(Err(())) => {
             return stream.finish(
@@ -274,7 +306,7 @@ pub(super) async fn complete(
     let mut body = response.into_body();
     let mut decoder = SseDecoder::default();
     let (e2e_ms, error) = loop {
-        match timeout_at(deadline, body.frame()).await {
+        match timeout(client.chunk_timeout, body.frame()).await {
             Ok(Some(Ok(frame))) => {
                 let Some(bytes) = frame.data_ref() else {
                     continue;
