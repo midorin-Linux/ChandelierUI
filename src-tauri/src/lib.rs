@@ -7,6 +7,7 @@ pub fn run() {
         .manage(commands::http_client().expect("could not initialize chat HTTP client"))
         .invoke_handler(tauri::generate_handler![
             commands::chat_completion,
+            commands::cancel_chat,
             commands::list_models
         ])
         .run(tauri::generate_context!())

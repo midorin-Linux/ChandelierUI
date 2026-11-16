@@ -1,6 +1,11 @@
 use std::{
+    future::Future,
     net::{IpAddr, SocketAddr},
-    sync::{Arc, OnceLock},
+    pin::pin,
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -10,7 +15,7 @@ use http_body_util::{BodyExt, Full};
 use hyper_util::rt::TokioIo;
 use reqwest::{Client, Url, redirect::Policy};
 use rustls_pki_types::ServerName;
-use tokio::{net::TcpStream, time::timeout};
+use tokio::{net::TcpStream, sync::oneshot, time::timeout};
 use tokio_rustls::TlsConnector;
 
 use super::{
@@ -28,6 +33,33 @@ pub struct HttpClient {
     tls: Arc<rustls::ClientConfig>,
     connect_timeout: Duration,
     chunk_timeout: Duration,
+    next_id: AtomicU64,
+    active_cancel: Mutex<Option<(u64, oneshot::Sender<()>)>>,
+}
+
+impl HttpClient {
+    pub(super) fn register_cancel(&self) -> (u64, oneshot::Receiver<()>) {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+        *self.active_cancel.lock().expect("cancel lock") = Some((id, tx));
+        (id, rx)
+    }
+
+    pub(super) fn cancel_active(&self) {
+        if let Some((_, tx)) = self.active_cancel.lock().expect("cancel lock").take() {
+            let _ = tx.send(());
+        }
+    }
+
+    pub(super) fn clear_cancel(&self, id: u64) {
+        let mut guard = self.active_cancel.lock().expect("cancel lock");
+        if guard
+            .as_ref()
+            .is_some_and(|(active_id, _)| *active_id == id)
+        {
+            *guard = None;
+        }
+    }
 }
 
 fn tls_config() -> Arc<rustls::ClientConfig> {
@@ -67,6 +99,8 @@ pub(super) fn http_client_with_timeouts(
         tls: tls_config(),
         connect_timeout,
         chunk_timeout,
+        next_id: AtomicU64::new(0),
+        active_cancel: Mutex::new(None),
     })
 }
 
@@ -204,9 +238,19 @@ async fn connect_stream(
     }
 }
 
+#[cfg(test)]
 pub(super) async fn complete(
     client: &HttpClient,
     payload: ChatPayload,
+    on_event: impl FnMut(CompletionDelta) -> Result<(), String>,
+) -> MeasuredCompletion {
+    complete_cancellable(client, payload, std::future::pending(), on_event).await
+}
+
+pub(super) async fn complete_cancellable(
+    client: &HttpClient,
+    payload: ChatPayload,
+    cancel: impl Future<Output = ()>,
     mut on_event: impl FnMut(CompletionDelta) -> Result<(), String>,
 ) -> MeasuredCompletion {
     let url = match endpoint(&payload.provider.base_url, "chat/completions") {
@@ -258,25 +302,33 @@ pub(super) async fn complete(
             Some("Could not reach the chat provider.".into()),
         );
     };
-    let conn = match timeout(
-        client.connect_timeout,
-        connect_stream(&url, &client.tls, &mut stream.metrics),
-    )
-    .await
-    {
-        Ok(Ok(conn)) => conn,
-        Ok(Err(())) => {
+    let mut cancel = pin!(cancel);
+    let conn = tokio::select! {
+        biased;
+        () = &mut cancel => {
             return stream.finish(
                 started.elapsed().as_secs_f64() * 1000.0,
-                Some("Could not reach the chat provider.".into()),
+                Some("Generation cancelled.".into()),
             );
         }
-        Err(_) => {
-            stream.metrics.timed_out = true;
-            return stream.finish(
-                started.elapsed().as_secs_f64() * 1000.0,
-                Some("Chat connection timed out.".into()),
-            );
+        res = timeout(
+            client.connect_timeout,
+            connect_stream(&url, &client.tls, &mut stream.metrics),
+        ) => match res {
+            Ok(Ok(conn)) => conn,
+            Ok(Err(())) => {
+                return stream.finish(
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    Some("Could not reach the chat provider.".into()),
+                );
+            }
+            Err(_) => {
+                stream.metrics.timed_out = true;
+                return stream.finish(
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    Some("Chat connection timed out.".into()),
+                );
+            }
         }
     };
     let send_fut = async {
@@ -285,20 +337,29 @@ pub(super) async fn complete(
             StreamConn::Tls(tls_stream) => send_http1(tls_stream, http_request).await,
         }
     };
-    let response = match timeout(client.chunk_timeout, send_fut).await {
-        Ok(Ok(response)) => response,
-        Ok(Err(())) => {
+    let response = tokio::select! {
+        biased;
+        () = &mut cancel => {
             return stream.finish(
                 started.elapsed().as_secs_f64() * 1000.0,
-                Some("Could not reach the chat provider.".into()),
+                Some("Generation cancelled.".into()),
             );
         }
-        Err(_) => {
-            stream.metrics.timed_out = true;
-            return stream.finish(
-                started.elapsed().as_secs_f64() * 1000.0,
-                Some("Chat request timed out.".into()),
-            );
+        res = timeout(client.chunk_timeout, send_fut) => match res {
+            Ok(Ok(response)) => response,
+            Ok(Err(())) => {
+                return stream.finish(
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    Some("Could not reach the chat provider.".into()),
+                );
+            }
+            Err(_) => {
+                stream.metrics.timed_out = true;
+                return stream.finish(
+                    started.elapsed().as_secs_f64() * 1000.0,
+                    Some("Chat request timed out.".into()),
+                );
+            }
         }
     };
     let status = response.status();
@@ -306,56 +367,65 @@ pub(super) async fn complete(
     let mut body = response.into_body();
     let mut decoder = SseDecoder::default();
     let (e2e_ms, error) = loop {
-        match timeout(client.chunk_timeout, body.frame()).await {
-            Ok(Some(Ok(frame))) => {
-                let Some(bytes) = frame.data_ref() else {
-                    continue;
-                };
-                if bytes.is_empty() {
-                    continue;
-                }
-                let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
-                stream.metrics.ttfb_ms.get_or_insert(elapsed_ms);
-                if !status.is_success() {
-                    continue;
-                }
-                match decoder.feed(bytes, |data| stream.event(data, elapsed_ms, &mut on_event)) {
-                    Ok(true) => break (elapsed_ms, stream.validate().err()),
-                    Ok(false) => {}
-                    Err(error) => break (elapsed_ms, Some(error)),
-                }
-            }
-            Ok(None) => {
-                let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
-                let error = if status.is_success() {
-                    decoder.finish().and_then(|()| stream.validate()).err()
-                } else {
-                    Some(format!("Chat provider returned HTTP {}.", status.as_u16()))
-                };
-                break (elapsed_ms, error);
-            }
-            Ok(Some(Err(_))) => {
-                let message = "Could not read the chat response body.";
+        tokio::select! {
+            biased;
+            () = &mut cancel => {
                 break (
                     started.elapsed().as_secs_f64() * 1000.0,
-                    Some(if status.is_success() {
-                        message.into()
-                    } else {
-                        format!("Chat provider returned HTTP {}. {message}", status.as_u16())
-                    }),
+                    Some("Generation cancelled.".into()),
                 );
             }
-            Err(_) => {
-                stream.metrics.timed_out = true;
-                let message = "Chat response body timed out.";
-                break (
-                    started.elapsed().as_secs_f64() * 1000.0,
-                    Some(if status.is_success() {
-                        message.into()
+            res = timeout(client.chunk_timeout, body.frame()) => match res {
+                Ok(Some(Ok(frame))) => {
+                    let Some(bytes) = frame.data_ref() else {
+                        continue;
+                    };
+                    if bytes.is_empty() {
+                        continue;
+                    }
+                    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    stream.metrics.ttfb_ms.get_or_insert(elapsed_ms);
+                    if !status.is_success() {
+                        continue;
+                    }
+                    match decoder.feed(bytes, |data| stream.event(data, elapsed_ms, &mut on_event)) {
+                        Ok(true) => break (elapsed_ms, stream.validate().err()),
+                        Ok(false) => {}
+                        Err(error) => break (elapsed_ms, Some(error)),
+                    }
+                }
+                Ok(None) => {
+                    let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    let error = if status.is_success() {
+                        decoder.finish().and_then(|()| stream.validate()).err()
                     } else {
-                        format!("Chat provider returned HTTP {}. {message}", status.as_u16())
-                    }),
-                );
+                        Some(format!("Chat provider returned HTTP {}.", status.as_u16()))
+                    };
+                    break (elapsed_ms, error);
+                }
+                Ok(Some(Err(_))) => {
+                    let message = "Could not read the chat response body.";
+                    break (
+                        started.elapsed().as_secs_f64() * 1000.0,
+                        Some(if status.is_success() {
+                            message.into()
+                        } else {
+                            format!("Chat provider returned HTTP {}. {message}", status.as_u16())
+                        }),
+                    );
+                }
+                Err(_) => {
+                    stream.metrics.timed_out = true;
+                    let message = "Chat response body timed out.";
+                    break (
+                        started.elapsed().as_secs_f64() * 1000.0,
+                        Some(if status.is_success() {
+                            message.into()
+                        } else {
+                            format!("Chat provider returned HTTP {}. {message}", status.as_u16())
+                        }),
+                    );
+                }
             }
         }
     };

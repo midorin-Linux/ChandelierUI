@@ -14,10 +14,12 @@ import { isSubmitEnter } from "@/src/lib/utils"
 
 export function MessageBox({
   onSend,
+  onCancel,
   isPending,
   ...settings
 }: ModelSettingProps & {
   onSend: (content: string) => boolean
+  onCancel: () => void
   isPending: boolean
 }) {
   const { selectedEffort, selectedModel } = settings
@@ -66,14 +68,24 @@ export function MessageBox({
             >
               <div></div>
               <div>
-                <InputGroupButton
-                  variant="default"
-                  size="sm"
-                  disabled={isPending || !draft.trim()}
-                  onClick={sendMessage}
-                >
-                  {isPending ? "Sending…" : "Send"}
-                </InputGroupButton>
+                {isPending ? (
+                  <InputGroupButton
+                    variant="destructive"
+                    size="sm"
+                    onClick={onCancel}
+                  >
+                    Cancel
+                  </InputGroupButton>
+                ) : (
+                  <InputGroupButton
+                    variant="default"
+                    size="sm"
+                    disabled={!draft.trim()}
+                    onClick={sendMessage}
+                  >
+                    Send
+                  </InputGroupButton>
+                )}
               </div>
             </InputGroupAddon>
           </InputGroup>

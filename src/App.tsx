@@ -149,6 +149,15 @@ function App() {
     return true
   }
 
+  async function cancelCompletion() {
+    if (!inFlight.current || !isTauri()) return
+    try {
+      await invoke("cancel_chat")
+    } catch (cause) {
+      setError(errorMessage(cause))
+    }
+  }
+
   return (
     <>
       <ThemeProvider defaultTheme="system">
@@ -219,6 +228,7 @@ function App() {
                     systemPrompt={systemPrompt}
                     onSystemPromptChange={setSystemPrompt}
                     onSend={sendMessage}
+                    onCancel={() => void cancelCompletion()}
                     isPending={isPending}
                   />
                 </div>

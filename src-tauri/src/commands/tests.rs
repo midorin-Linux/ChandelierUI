@@ -6,7 +6,10 @@ use tokio::{
 };
 
 use super::{
-    client::{complete, endpoint, fetch_models, http_client, http_client_with_timeouts},
+    client::{
+        complete, complete_cancellable, endpoint, fetch_models, http_client,
+        http_client_with_timeouts,
+    },
     metrics::{ChunkIntervals, CompletionMetrics},
     sse::{MAX_SSE_EVENT_BYTES, SseDecoder},
     stream::CompletionStream,
@@ -904,4 +907,38 @@ async fn allows_long_streams_within_chunk_timeout_and_enforces_connect_timeout()
     assert!(result.metrics.timed_out);
     assert_eq!(result.metrics.http_status, None);
     server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn cancels_streaming_completion_and_preserves_partial_text() {
+    let first = event(serde_json::json!({"content":"partial"}), None);
+    let (base, task) = stream_server(
+        "200 OK",
+        vec![
+            (Duration::ZERO, first.into_bytes()),
+            (Duration::from_secs(5), completion("late").into_bytes()),
+        ],
+        0,
+    )
+    .await;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut tx = Some(tx);
+    let result = complete_cancellable(
+        &http_client().unwrap(),
+        payload(base, "off"),
+        async move {
+            let _ = rx.await;
+        },
+        |_| {
+            if let Some(tx) = tx.take() {
+                let _ = tx.send(());
+            }
+            Ok(())
+        },
+    )
+    .await;
+    assert_eq!(result.error.as_deref(), Some("Generation cancelled."));
+    assert!(!result.metrics.timed_out);
+    assert_eq!(result.message.unwrap().content, "partial");
+    task.await.unwrap();
 }
