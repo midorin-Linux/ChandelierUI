@@ -34,13 +34,11 @@ just dev run
 | ---------------- | ---------------------------------------------------------------------- |
 | `just`           | List available commands                                                |
 | `just install`   | Install frontend dependencies according to the lockfile                |
-| `just dev`       | Launch the desktop app in development mode (Vite starts automatically) |
+| `just dev run`   | Launch the desktop app in development mode (Vite starts automatically) |
 | `just build`     | Build the frontend, desktop app, and installers                        |
 | `just web-dev`   | Start only the frontend dev server                                     |
 | `just web-build` | Type-check and build the frontend                                      |
 | `just preview`   | Preview the built frontend                                             |
-
-Do not add `run` to `just dev` or `just build`. Tauri features are not available in the browser preview.
 
 ### Build Options
 
