@@ -1,4 +1,18 @@
 import type { CompletionAttempt, CompletionMetrics } from "../types/analysis"
+import type { ProviderChatRequest } from "../types/chat"
+
+export function redactPayload(
+  payload: ProviderChatRequest
+): ProviderChatRequest {
+  const { api_key, ...provider } = payload.provider
+  if (!api_key?.trim()) {
+    return api_key === undefined ? payload : { ...payload, provider }
+  }
+  return {
+    ...payload,
+    provider: { ...provider, api_key: "[REDACTED]" },
+  }
+}
 
 export function emptyMetrics(e2eMs: number): CompletionMetrics {
   return {

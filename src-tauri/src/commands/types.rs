@@ -49,6 +49,8 @@ impl ReasoningEffort {
 #[derive(Deserialize)]
 pub struct Provider {
     pub(super) base_url: String,
+    #[serde(default)]
+    pub(super) api_key: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]

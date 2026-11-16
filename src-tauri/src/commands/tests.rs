@@ -614,9 +614,15 @@ async fn ignores_invalid_optional_model_context_lengths() {
     for value in ["null", "0", "-1", "2.5", "\"32768\"", "{}", "[]", "true"] {
         let body = format!("{{\"data\":[{{\"id\":\"local\",\"context_length\":{value}}}]}}");
         let (base_url, task) = server("200 OK", &body).await;
-        let models = fetch_models(&http_client().unwrap(), Provider { base_url })
-            .await
-            .unwrap();
+        let models = fetch_models(
+            &http_client().unwrap(),
+            Provider {
+                base_url,
+                api_key: None,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(models[0].context_length, None, "{value}");
         task.await.unwrap();
     }
@@ -629,9 +635,15 @@ async fn gets_provider_models() {
         r#"{"data":[{"id":"Qwen/Qwen3-8B","object":"model","context_length":32768},{"id":"llama3.2:latest"}]}"#,
     )
     .await;
-    let models = fetch_models(&http_client().unwrap(), Provider { base_url })
-        .await
-        .unwrap();
+    let models = fetch_models(
+        &http_client().unwrap(),
+        Provider {
+            base_url,
+            api_key: None,
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(
         models,
         vec![
@@ -654,9 +666,15 @@ async fn gets_provider_models() {
 #[tokio::test]
 async fn accepts_empty_model_list() {
     let (base_url, task) = server("200 OK", r#"{"data":[]}"#).await;
-    let models = fetch_models(&http_client().unwrap(), Provider { base_url })
-        .await
-        .unwrap();
+    let models = fetch_models(
+        &http_client().unwrap(),
+        Provider {
+            base_url,
+            api_key: None,
+        },
+    )
+    .await
+    .unwrap();
     assert!(models.is_empty());
     task.await.unwrap();
 }
@@ -687,9 +705,15 @@ async fn rejects_model_errors_and_invalid_ids() {
         ),
     ] {
         let (base_url, task) = server(status, body).await;
-        let error = fetch_models(&client, Provider { base_url })
-            .await
-            .unwrap_err();
+        let error = fetch_models(
+            &client,
+            Provider {
+                base_url,
+                api_key: None,
+            },
+        )
+        .await
+        .unwrap_err();
         assert!(error.contains(expected), "{error}");
         assert!(!error.contains("secret"));
         task.await.unwrap();
@@ -744,4 +768,54 @@ async fn rejects_blank_request_fields() {
                 .contains("nonblank")
         );
     }
+}
+
+#[tokio::test]
+async fn sends_bearer_auth_only_when_api_key_is_nonblank() {
+    let client = http_client().unwrap();
+
+    let (base_url, task) = server("200 OK", r#"{"data":[{"id":"gpt-4o"}]}"#).await;
+    fetch_models(
+        &client,
+        Provider {
+            base_url,
+            api_key: Some("  sk-models-key  ".into()),
+        },
+    )
+    .await
+    .unwrap();
+    let models_request = task.await.unwrap();
+    assert!(
+        models_request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer sk-models-key\r\n")
+    );
+
+    let (base_url, task) = server("200 OK", &completion("ok")).await;
+    let mut chat = payload(base_url, "off");
+    chat.provider.api_key = Some("sk-chat-key".into());
+    assert_eq!(complete(&client, chat, |_| Ok(())).await.error, None);
+    let chat_request = task.await.unwrap();
+    assert!(
+        chat_request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer sk-chat-key\r\n")
+    );
+
+    let (base_url, task) = server("200 OK", r#"{"data":[]}"#).await;
+    fetch_models(
+        &client,
+        Provider {
+            base_url,
+            api_key: Some("   ".into()),
+        },
+    )
+    .await
+    .unwrap();
+    let blank_key_request = task.await.unwrap();
+    assert!(
+        !blank_key_request
+            .to_ascii_lowercase()
+            .contains("authorization:")
+    );
 }

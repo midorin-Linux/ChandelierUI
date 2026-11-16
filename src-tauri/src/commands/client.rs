@@ -54,6 +54,13 @@ pub(super) fn endpoint(base: &str, suffix: &str) -> Result<Url, String> {
     Ok(url)
 }
 
+fn with_auth(request: reqwest::RequestBuilder, api_key: Option<&str>) -> reqwest::RequestBuilder {
+    match api_key.map(str::trim).filter(|key| !key.is_empty()) {
+        Some(key) => request.bearer_auth(key),
+        None => request,
+    }
+}
+
 pub(super) async fn complete(
     client: &Client,
     payload: ChatPayload,
@@ -84,16 +91,18 @@ pub(super) async fn complete(
             ..Default::default()
         };
     }
-    // Unauthenticated endpoints only: never attach API keys or other credentials.
-    let request = client.post(url).json(&WireRequest {
-        model: &request.model,
-        messages: &request.messages,
-        reasoning_effort: request.reasoning_effort.wire(),
-        stream: true,
-        stream_options: StreamOptions {
-            include_usage: true,
-        },
-    });
+    let request = with_auth(
+        client.post(url).json(&WireRequest {
+            model: &request.model,
+            messages: &request.messages,
+            reasoning_effort: request.reasoning_effort.wire(),
+            stream: true,
+            stream_options: StreamOptions {
+                include_usage: true,
+            },
+        }),
+        payload.provider.api_key.as_deref(),
+    );
     let mut stream = CompletionStream::default();
     let started = Instant::now();
     let mut response = match request.send().await {
@@ -166,13 +175,16 @@ pub(super) async fn fetch_models(
     provider: Provider,
 ) -> Result<Vec<Model>, String> {
     let url = endpoint(&provider.base_url, "models")?;
-    let response = client.get(url).send().await.map_err(|error| {
-        if error.is_timeout() {
-            "Model list request timed out.".to_string()
-        } else {
-            "Could not reach the model provider.".to_string()
-        }
-    })?;
+    let response = with_auth(client.get(url), provider.api_key.as_deref())
+        .send()
+        .await
+        .map_err(|error| {
+            if error.is_timeout() {
+                "Model list request timed out.".to_string()
+            } else {
+                "Could not reach the model provider.".to_string()
+            }
+        })?;
     if !response.status().is_success() {
         return Err(format!(
             "Model provider returned HTTP {}.",

@@ -1,4 +1,5 @@
-import {Play, RotateCcw} from "lucide-react"
+import type { KeyboardEvent } from "react"
+import { Play, RotateCcw } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Field, FieldLabel } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
@@ -10,6 +11,8 @@ export interface ProviderSettingsProps {
   setProviderUrl: (url: string) => void
   providerUrlInput: string
   setProviderUrlInput: (url: string) => void
+  apiKey: string
+  setApiKey: (key: string) => void
   models: readonly ApiModel[]
   modelsLoading: boolean
   modelsStatus: string
@@ -21,6 +24,8 @@ export function ProviderSettings({
   setProviderUrl,
   providerUrlInput,
   setProviderUrlInput,
+  apiKey,
+  setApiKey,
   models,
   modelsLoading,
   modelsStatus,
@@ -32,12 +37,18 @@ export function ProviderSettings({
     else setProviderUrl(url)
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (!isSubmitEnter(event)) return
+    event.preventDefault()
+    refreshModels()
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <p id="provider-description" className="text-sm text-muted-foreground">
-        Connect to an unauthenticated local OpenAI-compatible endpoint in the
-        Tauri desktop app. No API keys are supported. Models are fetched from
-        your endpoint.
+        Connect to an OpenAI-compatible endpoint in the Tauri desktop app. API
+        keys are optional for local endpoints. Models are fetched from your
+        endpoint.
       </p>
       <Field>
         <FieldLabel htmlFor="provider-url">Base URL</FieldLabel>
@@ -47,11 +58,19 @@ export function ProviderSettings({
           placeholder="http://localhost:1234/v1"
           value={providerUrlInput}
           onChange={(event) => setProviderUrlInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (!isSubmitEnter(event)) return
-            event.preventDefault()
-            refreshModels()
-          }}
+          onKeyDown={handleKeyDown}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="provider-api-key">API Key</FieldLabel>
+        <Input
+          id="provider-api-key"
+          type="password"
+          autoComplete="off"
+          placeholder="Optional"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          onKeyDown={handleKeyDown}
         />
       </Field>
       <Field>

@@ -3,6 +3,7 @@ import {
   emptyMetrics,
   formatMetric,
   providerLocation,
+  redactPayload,
   summarizeAttempts,
 } from "./analysis.ts"
 import type { CompletionAttempt, CompletionMetrics } from "../types/analysis.ts"
@@ -143,4 +144,31 @@ assert(
 assert(
   providerLocation("https://api.example.com").endpoint === "/chat/completions",
   "Root bases have a valid endpoint path"
+)
+
+const withoutKey = {
+  provider: { base_url: "https://api.example.com/v1" },
+  request: { model: "test", reasoning_effort: "off" as const, messages: [] },
+}
+assert(
+  redactPayload(withoutKey) === withoutKey,
+  "Payloads without an API key are returned unchanged"
+)
+const withKey = {
+  ...withoutKey,
+  provider: { base_url: "https://api.example.com/v1", api_key: "sk-secret" },
+}
+const redacted = redactPayload(withKey)
+assert(
+  redacted.provider.api_key === "[REDACTED]" &&
+    withKey.provider.api_key === "sk-secret",
+  "API key must be redacted without mutating the source payload"
+)
+const blankKeyRedacted = redactPayload({
+  ...withoutKey,
+  provider: { base_url: "https://api.example.com/v1", api_key: "  " },
+})
+assert(
+  !("api_key" in blankKeyRedacted.provider),
+  "Blank API keys are omitted from preview"
 )

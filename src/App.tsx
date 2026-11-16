@@ -7,7 +7,7 @@ import { MessageBox } from "@/src/components/MessageBox"
 import { AppSetting, type SettingsTab } from "@/src/components/AppSetting"
 import { Dialog } from "@/src/components/ui/dialog"
 import { useModels } from "@/src/hooks/useModels"
-import { emptyMetrics } from "@/src/lib/analysis"
+import { emptyMetrics, redactPayload } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
 import { errorMessage } from "@/src/lib/utils"
 import type {
@@ -26,6 +26,7 @@ import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
   const [providerUrl, setProviderUrl] = useState("")
+  const [apiKey, setApiKey] = useState("")
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
   const [providerUrlInput, setProviderUrlInput] = useState("")
@@ -36,7 +37,7 @@ function App() {
     modelsStatus,
     selectModel,
     refreshModels,
-  } = useModels(providerUrl)
+  } = useModels(providerUrl, apiKey)
   const [selectedEffort, setSelectedEffort] = useState<Effort>("medium")
   const [systemPrompt, setSystemPrompt] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -58,8 +59,12 @@ function App() {
   }
 
   function buildPayload(history: ChatMessage[]): ProviderChatRequest {
+    const trimmedKey = apiKey.trim()
     return {
-      provider: { base_url: providerUrl },
+      provider: {
+        base_url: providerUrl,
+        ...(trimmedKey ? { api_key: trimmedKey } : {}),
+      },
       request: {
         model: selectedModel,
         reasoning_effort: selectedEffort,
@@ -123,7 +128,7 @@ function App() {
         started_at: startedAt,
         retry,
         concurrency: 1,
-        payload: requestPayload,
+        payload: redactPayload(requestPayload),
         context_length: contextLength,
         result,
       },
@@ -158,6 +163,8 @@ function App() {
                 setProviderUrl,
                 providerUrlInput,
                 setProviderUrlInput,
+                apiKey,
+                setApiKey,
                 models,
                 modelsLoading,
                 modelsStatus,

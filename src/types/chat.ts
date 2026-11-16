@@ -25,6 +25,6 @@ export interface ChatCompletionRequest {
 }
 
 export interface ProviderChatRequest {
-  provider: { base_url: string }
+  provider: { base_url: string; api_key?: string }
   request: ChatCompletionRequest
 }
