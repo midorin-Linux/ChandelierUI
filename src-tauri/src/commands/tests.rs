@@ -1,13 +1,12 @@
 use std::time::Duration;
 
-use reqwest::Client;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
 };
 
 use super::{
-    client::{complete, endpoint, fetch_models, http_client},
+    client::{complete, endpoint, fetch_models, http_client, http_client_with_timeout},
     metrics::{ChunkIntervals, CompletionMetrics},
     sse::{MAX_SSE_EVENT_BYTES, SseDecoder},
     stream::CompletionStream,
@@ -435,10 +434,14 @@ async fn measures_delayed_fragmented_sse_and_provider_usage() {
     );
     assert_eq!(metrics.chunk_interval_stddev_ms, Some(0.0));
     let serialized = serde_json::to_value(metrics).unwrap();
+    for name in ["connection_ms", "tcp_ms"] {
+        assert!(
+            serialized[name].as_f64().is_some_and(|v| v >= 0.0),
+            "{name}"
+        );
+    }
     for name in [
-        "connection_ms",
         "dns_ms",
-        "tcp_ms",
         "tls_ms",
         "itl_mean_ms",
         "itl_max_ms",
@@ -524,10 +527,7 @@ async fn records_body_timeout_and_connection_failure() {
         0,
     )
     .await;
-    let client = Client::builder()
-        .timeout(Duration::from_millis(100))
-        .build()
-        .unwrap();
+    let client = http_client_with_timeout(Duration::from_millis(100)).unwrap();
     let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
     assert!(result.error.unwrap().contains("timed out"));
     assert!(result.metrics.timed_out);
@@ -818,4 +818,54 @@ async fn sends_bearer_auth_only_when_api_key_is_nonblank() {
             .to_ascii_lowercase()
             .contains("authorization:")
     );
+}
+
+#[tokio::test]
+async fn records_dns_tcp_and_connection_timings_for_hostnames() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let base = format!("http://localhost:{port}/v1");
+    let body = completion("ok");
+    let task = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut buf = [0u8; 4096];
+        let _ = socket.read(&mut buf).await.unwrap();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
+    });
+    let result = complete(&http_client().unwrap(), payload(base, "off"), |_| Ok(())).await;
+    assert_eq!(result.error, None);
+    assert!(result.metrics.dns_ms.is_some_and(|v| v >= 0.0));
+    assert!(result.metrics.tcp_ms.is_some_and(|v| v >= 0.0));
+    assert!(result.metrics.connection_ms.is_some_and(|v| v >= 0.0));
+    assert_eq!(result.metrics.tls_ms, None);
+    task.await.unwrap();
+}
+
+#[test]
+fn allows_empty_trailing_choice_after_finish_reason_but_rejects_content_or_conflict() {
+    let mut stream = CompletionStream::default();
+    let mut emit = |_: CompletionDelta| Ok(());
+    let finish = br#"{"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}"#;
+    let trailing_usage = br#"{"choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}"#;
+    assert!(!stream.event(finish, 10.0, &mut emit).unwrap());
+    assert!(!stream.event(trailing_usage, 20.0, &mut emit).unwrap());
+    assert!(stream.validate().is_ok());
+    assert_eq!(stream.metrics.finish_reason.as_deref(), Some("stop"));
+    assert_eq!(stream.metrics.total_tokens, Some(4));
+
+    for bad_after in [
+        br#"{"choices":[{"index":0,"delta":{"content":"extra"},"finish_reason":null}]}"#.as_slice(),
+        br#"{"choices":[{"index":0,"delta":{"reasoning":"extra"},"finish_reason":null}]}"#
+            .as_slice(),
+        br#"{"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}"#.as_slice(),
+    ] {
+        let mut s = CompletionStream::default();
+        assert!(!s.event(finish, 10.0, &mut emit).unwrap());
+        let err = s.event(bad_after, 20.0, &mut emit).unwrap_err();
+        assert!(err.contains("after its finish reason"), "{err}");
+    }
 }

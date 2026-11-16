@@ -186,9 +186,6 @@ impl CompletionStream {
             {
                 return Err("Chat provider refused the request.".into());
             }
-            if self.metrics.finish_reason.is_some() {
-                return Err("Chat provider returned a choice after its finish reason.".into());
-            }
             let content = choice.delta.content.as_deref().unwrap_or("");
             let reasoning = choice
                 .delta
@@ -197,6 +194,11 @@ impl CompletionStream {
                 .filter(|text| !text.is_empty())
                 .or(choice.delta.reasoning.as_deref())
                 .unwrap_or("");
+            if self.metrics.finish_reason.is_some()
+                && (!content.is_empty() || !reasoning.is_empty())
+            {
+                return Err("Chat provider returned a choice after its finish reason.".into());
+            }
             if !content.is_empty() || !reasoning.is_empty() {
                 self.metrics.ttft_ms.get_or_insert(elapsed_ms);
                 self.intervals.record(elapsed_ms);
@@ -211,9 +213,19 @@ impl CompletionStream {
                 if reason.trim().is_empty() {
                     return Err("Chat provider returned an empty finish reason.".into());
                 }
-                self.metrics.finish_reason = Some(reason.0.into_owned());
-                if self.metrics.finish_reason.as_deref() == Some("error") {
+                if &*reason == "error" {
                     return Err("Chat provider returned an error finish reason.".into());
+                }
+                if self
+                    .metrics
+                    .finish_reason
+                    .as_deref()
+                    .is_some_and(|prev| prev != &*reason)
+                {
+                    return Err("Chat provider returned a choice after its finish reason.".into());
+                }
+                if self.metrics.finish_reason.is_none() {
+                    self.metrics.finish_reason = Some(reason.0.into_owned());
                 }
             }
         }
