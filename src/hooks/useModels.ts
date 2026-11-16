@@ -62,14 +62,6 @@ export function useModels(providerUrl: string, apiKey = "") {
   useEffect(() => {
     let cancelled = false
     if (!providerUrl.trim()) return
-    setModelList((current) => ({
-      providerUrl,
-      models: [],
-      selectedModel:
-        current.providerUrl === providerUrl ? current.selectedModel : "",
-      isLoading: true,
-      error: null,
-    }))
 
     async function loadModels() {
       try {
@@ -89,11 +81,11 @@ export function useModels(providerUrl: string, apiKey = "") {
         setModelList((current) => ({
           providerUrl,
           models: fetchedModels,
-          selectedModel: fetchedModels.some(
-            (model) => model.id === current.selectedModel
-          )
-            ? current.selectedModel
-            : (fetchedModels[0]?.id ?? ""),
+          selectedModel:
+            current.providerUrl === providerUrl &&
+            fetchedModels.some((model) => model.id === current.selectedModel)
+              ? current.selectedModel
+              : (fetchedModels[0]?.id ?? ""),
           isLoading: false,
           error: null,
         }))
