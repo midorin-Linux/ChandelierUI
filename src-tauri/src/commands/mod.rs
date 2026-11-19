@@ -1,5 +1,6 @@
 mod client;
 mod metrics;
+pub mod settings;
 mod sse;
 mod stream;
 #[cfg(test)]
