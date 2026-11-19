@@ -1,5 +1,5 @@
 import "./App.css"
-import { useReducer, useRef, useState } from "react"
+import { useCallback, useReducer, useRef, useState } from "react"
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 import { Analysis } from "@/src/components/Analysis"
 import { ChatUI } from "@/src/components/ChatUI"
@@ -7,17 +7,19 @@ import { MessageBox } from "@/src/components/MessageBox"
 import { AppSetting, type SettingsTab } from "@/src/components/AppSetting"
 import { Dialog } from "@/src/components/ui/dialog"
 import { useModels } from "@/src/hooks/useModels"
+import { useSession } from "@/src/hooks/useSession"
+import {
+  SETTING_BASE_URL,
+  SETTING_LAST_SESSION,
+  useSettings,
+} from "@/src/hooks/useSettings"
 import { emptyMetrics, redactPayload } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
 import { errorMessage } from "@/src/lib/utils"
-import type {
-  CompletionAttempt,
-  MeasuredCompletion,
-} from "@/src/types/analysis"
+import type { MeasuredCompletion } from "@/src/types/analysis"
 import type {
   ChatMessage,
   CompletionDelta,
-  Effort,
   ProviderChatRequest,
 } from "@/src/types/chat"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
@@ -25,11 +27,36 @@ import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
-  const [providerUrl, setProviderUrl] = useState("")
+  const { settings, setSetting } = useSettings()
+  if (!settings) return null
+  return <Chat settings={settings} setSetting={setSetting} />
+}
+
+function Chat({
+  settings,
+  setSetting,
+}: {
+  settings: Record<string, unknown>
+  setSetting: (key: string, value: unknown) => void
+}) {
+  const savedUrl = settings[SETTING_BASE_URL]
+  const lastSession = settings[SETTING_LAST_SESSION]
+  const [providerUrl, setProviderUrlState] = useState(
+    typeof savedUrl === "string" ? savedUrl : ""
+  )
   const [apiKey, setApiKey] = useState("")
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
-  const [providerUrlInput, setProviderUrlInput] = useState("")
+  const [providerUrlInput, setProviderUrlInput] = useState(providerUrl)
+  const [error, setError] = useState<string | null>(null)
+  const session = useSession(
+    setError,
+    useCallback(
+      (id: string | null) => setSetting(SETTING_LAST_SESSION, id),
+      [setSetting]
+    ),
+    typeof lastSession === "string" ? lastSession : null
+  )
   const {
     models,
     modelsLoading,
@@ -37,21 +64,26 @@ function App() {
     modelsStatus,
     selectModel,
     refreshModels,
-  } = useModels(providerUrl, apiKey)
-  const [selectedEffort, setSelectedEffort] = useState<Effort>("medium")
-  const [systemPrompt, setSystemPrompt] = useState("")
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  } = useModels(providerUrl, apiKey, session.data.model, (model) =>
+    session.edit({ model })
+  )
+  const selectedEffort = session.data.reasoning_effort
+  const systemPrompt = session.data.system_prompt
+  const messages = session.data.messages
   const [stream, dispatchStream] = useReducer(completionStream, {
     attemptId: 0,
     isPending: false,
     message: null,
   })
   const { isPending } = stream
-  const [error, setError] = useState<string | null>(null)
-  const [attempts, setAttempts] = useState<CompletionAttempt[]>([])
-  const attemptId = useRef(0)
   const inFlight = useRef(false)
   const canSend = !modelsLoading && selectedModel !== ""
+
+  // Only called when the URL is confirmed (Enter / Fetch).
+  function setProviderUrl(url: string) {
+    setProviderUrlState(url)
+    setSetting(SETTING_BASE_URL, url)
+  }
 
   function openProviderSettings() {
     setSettingsTab("provider")
@@ -78,14 +110,16 @@ function App() {
     }
   }
 
-  async function requestCompletion(history: ChatMessage[], retry = false) {
-    if (inFlight.current || !canSend) return
-    inFlight.current = true
+  async function requestCompletion(
+    sessionId: string,
+    history: ChatMessage[],
+    retry: boolean
+  ) {
     setError(null)
     const requestPayload = buildPayload(history)
     const startedAt = new Date().toISOString()
     const started = performance.now()
-    const id = ++attemptId.current
+    const id = session.nextAttemptId()
     dispatchStream({ type: "start", attemptId: id })
     const contextLength =
       models.find((model) => model.id === selectedModel)?.context_length ?? null
@@ -107,7 +141,7 @@ function App() {
       if (result.error) setError(result.error)
       else if (result.message) {
         succeeded = true
-        setMessages([...history, result.message])
+        void session.commit(sessionId, [...history, result.message])
       }
     } catch (cause) {
       const message = errorMessage(cause)
@@ -118,35 +152,55 @@ function App() {
         metrics: emptyMetrics(performance.now() - started),
       }
     } finally {
-      inFlight.current = false
       dispatchStream({ type: "finish", attemptId: id, succeeded })
     }
-    setAttempts((current) => [
-      ...current,
-      {
-        id,
-        started_at: startedAt,
-        retry,
-        concurrency: 1,
-        payload: redactPayload(requestPayload),
-        context_length: contextLength,
-        result,
-      },
-    ])
+    session.recordAttempt(sessionId, {
+      id,
+      started_at: startedAt,
+      retry,
+      concurrency: 1,
+      payload: redactPayload(requestPayload),
+      context_length: contextLength,
+      result,
+    })
+  }
+
+  // `inFlight` also locks session switching while the history is being saved.
+  async function submit(history: ChatMessage[], retry = false) {
+    if (inFlight.current) return
+    inFlight.current = true
+    try {
+      const sessionId =
+        retry && session.activeId
+          ? session.activeId
+          : await session.persist(history, selectedModel)
+      if (!canSend) {
+        if (!retry) {
+          setError(
+            `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter or Refresh, and select a model.`
+          )
+        }
+        return
+      }
+      await requestCompletion(sessionId, history, retry)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      inFlight.current = false
+    }
   }
 
   function sendMessage(content: string) {
     if (inFlight.current || !content.trim()) return false
-    const history: ChatMessage[] = [...messages, { role: "user", content }]
-    setMessages(history)
-    if (!canSend) {
-      setError(
-        `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter or Refresh, and select a model.`
-      )
-      return true
-    }
-    void requestCompletion(history)
+    void submit([...messages, { role: "user", content }])
     return true
+  }
+
+  function switchSession(action: () => Promise<void>) {
+    if (inFlight.current) return
+    setError(null)
+    dispatchStream({ type: "reset" })
+    void action()
   }
 
   async function cancelCompletion() {
@@ -162,7 +216,18 @@ function App() {
     <>
       <ThemeProvider defaultTheme="system">
         <SidebarProvider>
-          <AppSidebar onOpenSettings={() => setAppSettingsOpen(true)} />
+          <AppSidebar
+            sessions={session.sessions}
+            activeId={session.activeId}
+            disabled={isPending}
+            onNew={() => switchSession(() => session.startNew(selectedModel))}
+            onSelect={(id) => switchSession(() => session.open(id))}
+            onRename={(id, title) => void session.rename(id, title)}
+            onDelete={(id) =>
+              switchSession(() => session.remove(id, selectedModel))
+            }
+            onOpenSettings={() => setAppSettingsOpen(true)}
+          />
           <Dialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen}>
             <AppSetting
               tab={settingsTab}
@@ -187,7 +252,7 @@ function App() {
                 <div className="flex gap-2">
                   <Analysis
                     payload={buildPayload(messages)}
-                    attempts={attempts}
+                    attempts={session.attempts}
                     isPending={isPending}
                   />
                 </div>
@@ -199,7 +264,7 @@ function App() {
                   isPending={isPending}
                   error={error}
                   canSend={canSend}
-                  onRetry={() => void requestCompletion(messages, true)}
+                  onRetry={() => void submit(messages, true)}
                 />
                 <div
                   className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
@@ -224,9 +289,13 @@ function App() {
                     selectedModel={selectedModel}
                     onModelChange={selectModel}
                     selectedEffort={selectedEffort}
-                    onEffortChange={setSelectedEffort}
+                    onEffortChange={(effort) =>
+                      session.edit({ reasoning_effort: effort })
+                    }
                     systemPrompt={systemPrompt}
-                    onSystemPromptChange={setSystemPrompt}
+                    onSystemPromptChange={(prompt) =>
+                      session.edit({ system_prompt: prompt })
+                    }
                     onSend={sendMessage}
                     onCancel={() => void cancelCompletion()}
                     isPending={isPending}

@@ -42,7 +42,7 @@ export function ChatUI({
       <div className="mx-auto w-full max-w-3xl border-x border-transparent p-4 pb-[calc(var(--composer-height,0px)+1rem)]">
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Start a conversation. Messages stay in this window only.
+            Start a conversation. Chats are saved on this device.
           </p>
         ) : (
           messages.map((message, index) =>

@@ -74,3 +74,15 @@ assert(
   completionStream(state, { type: "delta", attemptId: 2, delta }) === state,
   "Late data after success cannot resurrect a duplicate message"
 )
+
+assert(
+  completionStream(
+    {
+      attemptId: 4,
+      isPending: false,
+      message: { role: "assistant", content: "x" },
+    },
+    { type: "reset" }
+  ).message === null,
+  "Reset must drop a failed partial message when switching sessions"
+)
