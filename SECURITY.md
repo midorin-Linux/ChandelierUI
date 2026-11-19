@@ -28,4 +28,4 @@ fix is available, the report will be disclosed in a GitHub Security Advisory
 and you will be credited unless you prefer otherwise.
 
 If you cannot use GitHub's private reporting, contact the maintainer at
-`<SECURITY_CONTACT_EMAIL>`.
+`moriya@suwako.me`.
