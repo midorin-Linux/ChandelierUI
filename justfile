@@ -33,9 +33,9 @@ preview *args:
 typecheck:
     pnpm exec tsc --noEmit
 
-# Run ESLint on application sources.
+# Run ESLint on the whole repository (same scope as CI).
 lint:
-    pnpm exec eslint src
+    pnpm lint
 
 # Run frontend state-transition assertions without a test-framework dependency.
 web-test:

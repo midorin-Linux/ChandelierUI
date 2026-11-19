@@ -1,0 +1,7 @@
+# pnpm 12 records the pinned pnpm (package.json "packageManager") in an extra
+# YAML document at the top of pnpm-lock.yaml. GitHub's dependency graph does not
+# read that format, so Dependabot alerts and security updates would stop for npm
+# dependencies. "ignore" keeps the lockfile a single document; pnpm then no
+# longer switches to or enforces the pinned version locally.
+# https://pnpm.io/lockfile
+pmOnFail: ignore
