@@ -28,8 +28,12 @@ import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
   const { settings, setSetting } = useSettings()
-  if (!settings) return null
-  return <Chat settings={settings} setSetting={setSetting} />
+  // The theme stays outside the settings gate so it applies without waiting for IPC.
+  return (
+    <ThemeProvider defaultTheme="system">
+      {settings && <Chat settings={settings} setSetting={setSetting} />}
+    </ThemeProvider>
+  )
 }
 
 function Chat({
@@ -214,98 +218,96 @@ function Chat({
 
   return (
     <>
-      <ThemeProvider defaultTheme="system">
-        <SidebarProvider>
-          <AppSidebar
-            sessions={session.sessions}
-            activeId={session.activeId}
-            disabled={isPending}
-            onNew={() => switchSession(() => session.startNew(selectedModel))}
-            onSelect={(id) => switchSession(() => session.open(id))}
-            onRename={(id, title) => void session.rename(id, title)}
-            onDelete={(id) =>
-              switchSession(() => session.remove(id, selectedModel))
-            }
-            onOpenSettings={() => setAppSettingsOpen(true)}
+      <SidebarProvider>
+        <AppSidebar
+          sessions={session.sessions}
+          activeId={session.activeId}
+          disabled={isPending}
+          onNew={() => switchSession(() => session.startNew(selectedModel))}
+          onSelect={(id) => switchSession(() => session.open(id))}
+          onRename={(id, title) => void session.rename(id, title)}
+          onDelete={(id) =>
+            switchSession(() => session.remove(id, selectedModel))
+          }
+          onOpenSettings={() => setAppSettingsOpen(true)}
+        />
+        <Dialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen}>
+          <AppSetting
+            tab={settingsTab}
+            onTabChange={setSettingsTab}
+            provider={{
+              providerUrl,
+              setProviderUrl,
+              providerUrlInput,
+              setProviderUrlInput,
+              apiKey,
+              setApiKey,
+              models,
+              modelsLoading,
+              modelsStatus,
+              onRefreshModels: refreshModels,
+            }}
           />
-          <Dialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen}>
-            <AppSetting
-              tab={settingsTab}
-              onTabChange={setSettingsTab}
-              provider={{
-                providerUrl,
-                setProviderUrl,
-                providerUrlInput,
-                setProviderUrlInput,
-                apiKey,
-                setApiKey,
-                models,
-                modelsLoading,
-                modelsStatus,
-                onRefreshModels: refreshModels,
-              }}
-            />
-          </Dialog>
-          <div className="flex h-screen min-w-0 flex-1 justify-center">
-            <div className="flex min-h-0 w-full flex-col">
-              <div className="flex shrink-0 justify-end px-4 py-2 border-b">
-                <div className="flex gap-2">
-                  <Analysis
-                    payload={buildPayload(messages)}
-                    attempts={session.attempts}
-                    isPending={isPending}
-                  />
-                </div>
-              </div>
-              <div className="relative flex min-h-0 w-full flex-1 flex-col">
-                <ChatUI
-                  messages={messages}
-                  partialMessage={stream.message}
+        </Dialog>
+        <div className="flex h-screen min-w-0 flex-1 justify-center">
+          <div className="flex min-h-0 w-full flex-col">
+            <div className="flex shrink-0 justify-end px-4 py-2 border-b">
+              <div className="flex gap-2">
+                <Analysis
+                  payload={buildPayload(messages)}
+                  attempts={session.attempts}
                   isPending={isPending}
-                  error={error}
-                  canSend={canSend}
-                  onRetry={() => void submit(messages, true)}
                 />
-                <div
-                  className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
-                  ref={(node) => {
-                    if (!node) return
-                    const observer = new ResizeObserver(() => {
-                      node.parentElement?.style.setProperty(
-                        "--composer-height",
-                        `${node.offsetHeight}px`
-                      )
-                    })
-                    observer.observe(node)
-                    return () => observer.disconnect()
-                  }}
-                >
-                  <MessageBox
-                    models={models}
-                    modelsLoading={modelsLoading}
-                    modelsStatus={modelsStatus}
-                    onRefreshModels={refreshModels}
-                    onOpenProviderSettings={openProviderSettings}
-                    selectedModel={selectedModel}
-                    onModelChange={selectModel}
-                    selectedEffort={selectedEffort}
-                    onEffortChange={(effort) =>
-                      session.edit({ reasoning_effort: effort })
-                    }
-                    systemPrompt={systemPrompt}
-                    onSystemPromptChange={(prompt) =>
-                      session.edit({ system_prompt: prompt })
-                    }
-                    onSend={sendMessage}
-                    onCancel={() => void cancelCompletion()}
-                    isPending={isPending}
-                  />
-                </div>
+              </div>
+            </div>
+            <div className="relative flex min-h-0 w-full flex-1 flex-col">
+              <ChatUI
+                messages={messages}
+                partialMessage={stream.message}
+                isPending={isPending}
+                error={error}
+                canSend={canSend}
+                onRetry={() => void submit(messages, true)}
+              />
+              <div
+                className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
+                ref={(node) => {
+                  if (!node) return
+                  const observer = new ResizeObserver(() => {
+                    node.parentElement?.style.setProperty(
+                      "--composer-height",
+                      `${node.offsetHeight}px`
+                    )
+                  })
+                  observer.observe(node)
+                  return () => observer.disconnect()
+                }}
+              >
+                <MessageBox
+                  models={models}
+                  modelsLoading={modelsLoading}
+                  modelsStatus={modelsStatus}
+                  onRefreshModels={refreshModels}
+                  onOpenProviderSettings={openProviderSettings}
+                  selectedModel={selectedModel}
+                  onModelChange={selectModel}
+                  selectedEffort={selectedEffort}
+                  onEffortChange={(effort) =>
+                    session.edit({ reasoning_effort: effort })
+                  }
+                  systemPrompt={systemPrompt}
+                  onSystemPromptChange={(prompt) =>
+                    session.edit({ system_prompt: prompt })
+                  }
+                  onSend={sendMessage}
+                  onCancel={() => void cancelCompletion()}
+                  isPending={isPending}
+                />
               </div>
             </div>
           </div>
-        </SidebarProvider>
-      </ThemeProvider>
+        </div>
+      </SidebarProvider>
     </>
   )
 }
