@@ -116,11 +116,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # package.json has no "packageManager" field, so the pnpm version is pinned here.
+      # package.json has no "packageManager" field, so the pnpm version is pinned
+      # here to the latest release the lockfile is maintained with. Dependabot
+      # does not update this value; bump it by hand when upgrading pnpm locally.
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
         with:
-          version: 10.28.0
+          version: 12.21.0
 
       # setup-node's built-in cache saves on every lockfile change, including in
       # PRs, and cannot be limited to master; the store is cached explicitly below.
