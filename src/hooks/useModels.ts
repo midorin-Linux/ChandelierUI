@@ -3,18 +3,25 @@ import { invoke, isTauri } from "@tauri-apps/api/core"
 import { errorMessage } from "@/src/lib/utils"
 import type { ApiModel } from "@/src/types/chat"
 
-export function useModels(providerUrl: string, apiKey = "") {
+/**
+ * `preferredModel` (the session's saved model) is selected once the list contains it,
+ * otherwise the first model; `onSelect` receives the user's choice.
+ */
+export function useModels(
+  providerUrl: string,
+  apiKey: string,
+  preferredModel: string,
+  onSelect: (model: string) => void
+) {
   const apiKeyRef = useRef(apiKey)
   const [modelList, setModelList] = useState<{
     providerUrl: string
     models: ApiModel[]
-    selectedModel: string
     isLoading: boolean
     error: string | null
   }>({
     providerUrl: "",
     models: [],
-    selectedModel: "",
     isLoading: false,
     error: null,
   })
@@ -24,11 +31,9 @@ export function useModels(providerUrl: string, apiKey = "") {
     modelList.providerUrl === providerUrl
       ? modelList.isLoading
       : Boolean(providerUrl.trim())
-  const selectedModel = models.some(
-    (model) => model.id === modelList.selectedModel
-  )
-    ? modelList.selectedModel
-    : ""
+  const selectedModel = models.some((model) => model.id === preferredModel)
+    ? preferredModel
+    : (models[0]?.id ?? "")
   const modelsStatus =
     modelList.providerUrl === providerUrl && modelList.error
       ? modelList.error
@@ -42,7 +47,7 @@ export function useModels(providerUrl: string, apiKey = "") {
 
   function selectModel(model: string) {
     if (modelsLoading || !models.some((entry) => entry.id === model)) return
-    setModelList((current) => ({ ...current, selectedModel: model }))
+    onSelect(model)
   }
 
   function refreshModels() {
@@ -78,23 +83,17 @@ export function useModels(providerUrl: string, apiKey = "") {
           },
         })
         if (cancelled) return
-        setModelList((current) => ({
+        setModelList({
           providerUrl,
           models: fetchedModels,
-          selectedModel:
-            current.providerUrl === providerUrl &&
-            fetchedModels.some((model) => model.id === current.selectedModel)
-              ? current.selectedModel
-              : (fetchedModels[0]?.id ?? ""),
           isLoading: false,
           error: null,
-        }))
+        })
       } catch (cause) {
         if (cancelled) return
         setModelList({
           providerUrl,
           models: [],
-          selectedModel: "",
           isLoading: false,
           error: errorMessage(cause),
         })

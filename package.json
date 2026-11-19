@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "node --experimental-strip-types src/lib/analysis.test.ts && node --experimental-strip-types src/lib/completionStream.test.ts && node --experimental-strip-types src/lib/normalizeMathDelimiters.test.ts && node --experimental-strip-types src/lib/markdown.test.ts",
+    "test": "node --experimental-strip-types src/lib/analysis.test.ts && node --experimental-strip-types src/lib/completionStream.test.ts && node --experimental-strip-types src/lib/normalizeMathDelimiters.test.ts && node --experimental-strip-types src/lib/markdown.test.ts && node --experimental-strip-types src/lib/memoryStorage.test.ts && node --experimental-strip-types src/lib/retry.test.ts && node --experimental-strip-types src/lib/writeQueue.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },

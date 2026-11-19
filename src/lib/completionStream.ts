@@ -10,11 +10,15 @@ type StreamEvent =
   | { type: "start"; attemptId: number }
   | { type: "delta"; attemptId: number; delta: CompletionDelta }
   | { type: "finish"; attemptId: number; succeeded: boolean }
+  | { type: "reset" }
 
 export function completionStream(
   state: CompletionStream,
   event: StreamEvent
 ): CompletionStream {
+  if (event.type === "reset") {
+    return { attemptId: 0, isPending: false, message: null }
+  }
   if (event.type === "start") {
     return { attemptId: event.attemptId, isPending: true, message: null }
   }
