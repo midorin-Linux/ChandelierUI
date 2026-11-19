@@ -65,11 +65,35 @@ jobs:
         with:
           persist-credentials: false
 
+      # Downloads from the Ubuntu mirror are sometimes very slow (63.8 MB at
+      # ~250 kB/s, 4-5 minutes), so the .deb files are cached. Package versions
+      # follow the runner image, and the package list lives in this file, so
+      # both are part of the key; an older image's cache is still restored and
+      # apt downloads only what changed.
+      - name: Get runner image version
+        id: image
+        run: |
+          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
+          echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: Restore apt packages
+        id: apt-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: apt-${{ steps.image.outputs.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: apt-${{ steps.image.outputs.os }}-
+
       # The package list follows https://v2.tauri.app/start/prerequisites/#linux
+      # /var/cache/apt/archives is root-owned and holds a lock file that
+      # actions/cache cannot read, so packages are copied to ~/apt-archives.
       - name: Install Tauri system dependencies
         run: |
+          if compgen -G "$HOME/apt-archives/*.deb" > /dev/null; then
+            sudo cp "$HOME"/apt-archives/*.deb /var/cache/apt/archives/
+          fi
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true \
             build-essential \
             file \
             libayatana-appindicator3-dev \
@@ -79,6 +103,23 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libxdo-dev \
             wget
+
+      # autoclean drops .deb files no longer in the package index, so a cache
+      # restored from an older image does not grow without bound.
+      - name: Collect apt packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.apt-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get autoclean
+          rm -rf "$HOME/apt-archives"
+          mkdir -p "$HOME/apt-archives"
+          cp /var/cache/apt/archives/*.deb "$HOME/apt-archives/"
+
+      - name: Save apt packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.apt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/apt-archives
+          key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
       # Must run before rust-cache: the installed toolchains are part of its key.
       - name: Install Rust toolchain
