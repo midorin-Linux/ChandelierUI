@@ -1,0 +1,79 @@
+name: "CodeQL (Rust)"
+
+# Split from codeql.yml so it can be path-filtered: the Rust analysis takes
+# 4-7 minutes and is the slowest check, so it only runs when Rust code changes.
+# The weekly schedule still re-analyzes master with updated query packs.
+on:
+  push:
+    branches: ["master"]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/codeql-rust.yml"
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/codeql-rust.yml"
+  schedule:
+    - cron: "25 10 * * 0"
+
+# Superseded PR runs are cancelled. Runs on master (push and schedule share the
+# refs/heads/master group) are not, so a push never cancels a running analysis.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions: {}
+
+jobs:
+  analyze:
+    name: Analyze (rust)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload CodeQL results as code scanning alerts
+      packages: read # fetch internal or private CodeQL packs
+      actions: read # only required for workflows in private repositories
+      contents: read # check out the repository
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A persistent target dir for the extractor's internal cargo commands
+      # (build scripts, proc macros) lets consecutive runs reuse their output.
+      # rustc's version goes into the cache key: artifacts from another rustc
+      # are not reused, and the preinstalled rustc changes with the runner image.
+      - name: Configure extractor cargo target
+        id: target
+        run: |
+          echo "CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR=$RUNNER_TEMP/codeql-cargo-target" >> "$GITHUB_ENV"
+          echo "path=$RUNNER_TEMP/codeql-cargo-target" >> "$GITHUB_OUTPUT"
+          echo "rustc=$(rustc --version | tr -c '[:alnum:].\n' '-')" >> "$GITHUB_OUTPUT"
+
+      # Same policy as ci.yml: only master writes the cache, PRs restore it.
+      - name: Restore extractor cargo target
+        id: target-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.target.outputs.path }}
+          key: codeql-rust-target-${{ runner.os }}-${{ steps.target.outputs.rustc }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: codeql-rust-target-${{ runner.os }}-${{ steps.target.outputs.rustc }}-
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: rust
+          build-mode: none
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:rust"
+
+      - name: Save extractor cargo target
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && steps.target-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.target.outputs.path }}
+          key: ${{ steps.target-cache.outputs.cache-primary-key }}
