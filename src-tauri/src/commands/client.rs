@@ -93,6 +93,7 @@ pub(super) fn http_client_with_timeouts(
         .connect_timeout(connect_timeout)
         .timeout(chunk_timeout)
         .redirect(Policy::none())
+        .use_preconfigured_tls(tls_config().as_ref().clone())
         .build()?;
     Ok(HttpClient {
         models,
