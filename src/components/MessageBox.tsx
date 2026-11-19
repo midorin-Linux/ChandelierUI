@@ -16,16 +16,19 @@ export function MessageBox({
   onSend,
   onCancel,
   isPending,
+  disabled,
   ...settings
 }: ModelSettingProps & {
   onSend: (content: string) => boolean
   onCancel: () => void
   isPending: boolean
+  /** Switching or restoring a session: sending is off but the draft is kept. */
+  disabled: boolean
 }) {
   const { selectedEffort, selectedModel } = settings
   const [draft, setDraft] = useState("")
   function sendMessage() {
-    if (isPending || !draft.trim()) return
+    if (isPending || disabled || !draft.trim()) return
     if (onSend(draft)) setDraft("")
   }
 
@@ -80,7 +83,7 @@ export function MessageBox({
                   <InputGroupButton
                     variant="default"
                     size="sm"
-                    disabled={!draft.trim()}
+                    disabled={disabled || !draft.trim()}
                     onClick={sendMessage}
                   >
                     Send

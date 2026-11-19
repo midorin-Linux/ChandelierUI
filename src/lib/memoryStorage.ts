@@ -44,7 +44,11 @@ export function createMemoryStorage(): Storage {
         created_at: now,
         updated_at: now,
       }
-      sessions.set(summary.id, { summary, data, attempts: [] })
+      sessions.set(summary.id, {
+        summary,
+        data: structuredClone(data),
+        attempts: [],
+      })
       return summary
     },
     loadSession: async (id) => structuredClone(find(id)),

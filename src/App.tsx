@@ -81,6 +81,9 @@ function Chat({
   })
   const { isPending } = stream
   const inFlight = useRef(false)
+  // Mirrors `inFlight` for rendering. While set, sending and switching are disabled.
+  const [locked, setLocked] = useState(false)
+  const busy = locked || session.restoring
   const canSend = !modelsLoading && selectedModel !== ""
 
   // Only called when the URL is confirmed (Enter / Fetch).
@@ -128,7 +131,7 @@ function Chat({
     const contextLength =
       models.find((model) => model.id === selectedModel)?.context_length ?? null
     let result: MeasuredCompletion
-    let succeeded = false
+    let reply: ChatMessage | null = null
     try {
       if (!isTauri()) {
         throw new Error(
@@ -144,8 +147,7 @@ function Chat({
       })
       if (result.error) setError(result.error)
       else if (result.message) {
-        succeeded = true
-        void session.commit(sessionId, [...history, result.message])
+        reply = result.message
       }
     } catch (cause) {
       const message = errorMessage(cause)
@@ -156,8 +158,14 @@ function Chat({
         metrics: emptyMetrics(performance.now() - started),
       }
     } finally {
-      dispatchStream({ type: "finish", attemptId: id, succeeded })
+      dispatchStream({
+        type: "finish",
+        attemptId: id,
+        succeeded: reply !== null,
+      })
     }
+    // Same tick as `finish`, so the partial message is replaced without a gap.
+    if (reply) await session.commit(sessionId, [...history, reply])
     session.recordAttempt(sessionId, {
       id,
       started_at: startedAt,
@@ -169,11 +177,23 @@ function Chat({
     })
   }
 
-  // `inFlight` also locks session switching while the history is being saved.
-  async function submit(history: ChatMessage[], retry = false) {
-    if (inFlight.current) return
+  /** Runs `task` as the only operation: sends, session switches and restores exclude each other. */
+  async function exclusive(task: () => Promise<void>) {
+    if (inFlight.current || session.restoring) return
     inFlight.current = true
+    setLocked(true)
     try {
+      await task()
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      inFlight.current = false
+      setLocked(false)
+    }
+  }
+
+  function submit(history: ChatMessage[], retry = false) {
+    return exclusive(async () => {
       const sessionId =
         retry && session.activeId
           ? session.activeId
@@ -187,24 +207,21 @@ function Chat({
         return
       }
       await requestCompletion(sessionId, history, retry)
-    } catch (cause) {
-      setError(errorMessage(cause))
-    } finally {
-      inFlight.current = false
-    }
+    })
   }
 
   function sendMessage(content: string) {
-    if (inFlight.current || !content.trim()) return false
+    if (inFlight.current || session.restoring || !content.trim()) return false
     void submit([...messages, { role: "user", content }])
     return true
   }
 
   function switchSession(action: () => Promise<void>) {
-    if (inFlight.current) return
-    setError(null)
-    dispatchStream({ type: "reset" })
-    void action()
+    void exclusive(async () => {
+      setError(null)
+      dispatchStream({ type: "reset" })
+      await action()
+    })
   }
 
   async function cancelCompletion() {
@@ -222,7 +239,7 @@ function Chat({
         <AppSidebar
           sessions={session.sessions}
           activeId={session.activeId}
-          disabled={isPending}
+          disabled={busy}
           onNew={() => switchSession(() => session.startNew(selectedModel))}
           onSelect={(id) => switchSession(() => session.open(id))}
           onRename={(id, title) => void session.rename(id, title)}
@@ -265,6 +282,7 @@ function Chat({
                 messages={messages}
                 partialMessage={stream.message}
                 isPending={isPending}
+                busy={busy}
                 error={error}
                 canSend={canSend}
                 onRetry={() => void submit(messages, true)}
@@ -302,6 +320,7 @@ function Chat({
                   onSend={sendMessage}
                   onCancel={() => void cancelCompletion()}
                   isPending={isPending}
+                  disabled={busy}
                 />
               </div>
             </div>

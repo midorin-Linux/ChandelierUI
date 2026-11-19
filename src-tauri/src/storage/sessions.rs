@@ -29,11 +29,12 @@ pub async fn create(pool: &SqlitePool, data: &SessionData) -> Result<SessionSumm
         .find(|message| message.role == Role::User)
         .map(|message| message.content.trim().chars().take(TITLE_CHARS).collect())
         .unwrap_or_default();
+    let now = now_ms();
     let summary = SessionSummary {
         id: Uuid::now_v7().to_string(),
         title,
-        created_at: now_ms(),
-        updated_at: now_ms(),
+        created_at: now,
+        updated_at: now,
     };
     sqlx::query(
         "INSERT INTO sessions (id, title, created_at, updated_at, data) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -97,7 +98,8 @@ pub async fn rename(pool: &SqlitePool, id: &str, title: &str) -> Result<(), Stor
     Ok(())
 }
 
-/// Attempts go with it (`ON DELETE CASCADE`).
+/// Attempts go with it (`ON DELETE CASCADE`). Deleting an unknown id succeeds on
+/// purpose, so repeating the call always ends in the same state.
 pub async fn delete(pool: &SqlitePool, id: &str) -> Result<(), StorageError> {
     sqlx::query("DELETE FROM sessions WHERE id = ?1")
         .bind(id)

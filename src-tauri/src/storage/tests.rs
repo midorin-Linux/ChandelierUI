@@ -69,6 +69,7 @@ async fn session_roundtrip_with_title_from_first_message() {
     let long = "あ".repeat(100);
     let summary = sessions::create(&pool, &data(&long)).await.unwrap();
     assert_eq!(summary.title.chars().count(), 40);
+    assert_eq!(summary.created_at, summary.updated_at);
     let loaded = sessions::load(&pool, &summary.id).await.unwrap();
     assert_eq!(loaded.data, data(&long));
     assert_eq!(loaded.summary, summary);

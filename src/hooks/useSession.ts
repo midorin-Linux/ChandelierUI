@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { storage } from "@/src/lib/storage"
 import { errorMessage } from "@/src/lib/utils"
 import type { CompletionAttempt } from "@/src/types/analysis"
@@ -35,6 +37,8 @@ export function useSession(
   const attemptCounter = useRef(0)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const started = useRef(false)
+  // True until the saved session has been restored; callers must not send meanwhile.
+  const [restoring, setRestoring] = useState(true)
 
   const fail = useCallback(
     (cause: unknown) => onError(errorMessage(cause)),
@@ -104,7 +108,15 @@ export function useSession(
         }
       })
       .catch(fail)
+      .finally(() => setRestoring(false))
   }, [initialId, open, fail])
+
+  // Write a pending debounced save before the window closes.
+  useEffect(() => {
+    if (!isTauri()) return
+    const unlisten = getCurrentWindow().onCloseRequested(() => flush())
+    return () => void unlisten.then((stop) => stop())
+  }, [flush])
 
   function reset(model: string) {
     cancelSave()
@@ -170,6 +182,7 @@ export function useSession(
   return {
     sessions,
     activeId,
+    restoring,
     data,
     attempts,
     nextAttemptId: () => ++attemptCounter.current,

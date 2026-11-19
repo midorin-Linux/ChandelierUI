@@ -11,12 +11,14 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/src/components/ui/trace"
+import { awaitsReply } from "@/src/lib/retry"
 import type { ChatMessage } from "@/src/types/chat"
 
 export function ChatUI({
   messages,
   partialMessage,
   isPending,
+  busy,
   error,
   canSend,
   onRetry,
@@ -24,6 +26,8 @@ export function ChatUI({
   messages: readonly ChatMessage[]
   partialMessage: ChatMessage | null
   isPending: boolean
+  /** Sending, switching or restoring: hides the missing-reply notice. */
+  busy: boolean
   error: string | null
   canSend: boolean
   onRetry: () => void
@@ -32,6 +36,7 @@ export function ChatUI({
   useEffect(() => {
     messageEnd.current?.scrollIntoView({ block: "nearest" })
   }, [messages, partialMessage, isPending, error])
+  const canRetry = canSend && awaitsReply(messages, busy)
   return (
     <div
       className="min-h-0 w-full flex-1 overflow-y-auto text-[0.9rem] scroll-pb-[var(--composer-height,0px)]"
@@ -93,15 +98,18 @@ export function ChatUI({
                 Open Provider settings and select a model to enable Retry.
               </p>
             )}
-            <Button
-              variant="outline"
-              disabled={
-                isPending ||
-                !canSend ||
-                messages[messages.length - 1]?.role !== "user"
-              }
-              onClick={onRetry}
-            >
+            <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
+              Retry
+            </Button>
+          </div>
+        )}
+        {error === null && awaitsReply(messages, busy) && (
+          <div className="space-y-2 rounded-lg border p-3">
+            <p role="status" className="text-sm text-muted-foreground">
+              No response yet.
+              {!canSend && " Open Provider settings and select a model."}
+            </p>
+            <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
               Retry
             </Button>
           </div>
