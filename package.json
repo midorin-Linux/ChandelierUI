@@ -3,9 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@12.21.0+sha512.66fd8278ee28935ce951792d34367ff3af5c432a2756445823029533835b8da529bbe0be5130afd56ed0713fb8789e47bad82d93bd5ae2fe54b15562d6276ef0",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "lint": "eslint .",
     "test": "node --experimental-strip-types src/lib/analysis.test.ts && node --experimental-strip-types src/lib/completionStream.test.ts && node --experimental-strip-types src/lib/normalizeMathDelimiters.test.ts && node --experimental-strip-types src/lib/markdown.test.ts && node --experimental-strip-types src/lib/memoryStorage.test.ts && node --experimental-strip-types src/lib/retry.test.ts && node --experimental-strip-types src/lib/writeQueue.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"
@@ -40,9 +42,11 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
     "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.8",
     "globals": "^17.14.0",
     "prettier": "3.9.10",
     "typescript": "~6.0.3",

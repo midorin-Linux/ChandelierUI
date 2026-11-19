@@ -19,6 +19,7 @@ cargo install just
 
 # If pnpm is not installed (details: https://pnpm.io/installation)
 npx get-pnpm
+# pnpm does not switch versions automatically here; use the version in package.json "packageManager"
 
 git clone https://github.com/midorin-Linux/ChandelierUI.git
 cd ChandelierUI

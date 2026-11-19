@@ -1,0 +1,245 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# Superseded PR runs are cancelled. Runs on master are not: they are the only
+# runs that write caches, and a cancelled run saves nothing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Cache policy
+# ------------
+# - Caches are written only by pushes to master. Pull requests (including
+#   Dependabot) restore master's cache but never save their own: PR-scoped
+#   caches cannot be shared with other PRs and only push master's cache out
+#   of the 10 GB repository quota.
+# - Only the `rust` and `frontend` jobs use a cache. Other jobs download
+#   prebuilt binaries and would gain little from one.
+
+jobs:
+  # Kept separate from `rust`: it needs nightly rustfmt, and rust-cache hashes the
+  # version of every installed toolchain into its key. A nightly toolchain in the
+  # cached job would change the key daily and make every run a cache miss.
+  rustfmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # rustfmt.toml uses nightly-only options (imports_granularity, group_imports),
+      # so formatting is checked with nightly rustfmt, as `just fmt-check` does.
+      - name: Install nightly rustfmt
+        run: rustup toolchain install nightly --profile minimal --component rustfmt
+
+      - name: Check formatting
+        working-directory: src-tauri
+        run: cargo +nightly fmt --all -- --check
+
+  rust:
+    name: rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # Debug info roughly halves target/ (measured locally: 3.5 GB -> 1.7 GB for
+      # clippy + test), which keeps the cache small and fast to restore.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      # rust-cache also sets this; set here so it is explicit and part of the key.
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The package list follows https://v2.tauri.app/start/prerequisites/#linux
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            file \
+            libayatana-appindicator3-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            libxdo-dev \
+            wget
+
+      # Must run before rust-cache: the installed toolchains are part of its key.
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          rustup toolchain list
+
+      # The key changes only with Cargo.lock / Cargo.toml, the stable rustc
+      # version, or CARGO_* / RUST* env vars. On a partial match a PR restores
+      # the closest master entry and rebuilds only what changed.
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+          # Nothing is installed into ~/.cargo/bin by this job.
+          cache-bin: false
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --locked
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The pnpm version comes from "packageManager" in package.json (single source
+      # of truth); do not add a `version:` input, action-setup fails on a mismatch.
+      # Dependabot's documentation does not list "packageManager" as a field it
+      # updates, so bump it by hand (with its sha512) when upgrading pnpm.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      # setup-node's built-in cache saves on every lockfile change, including in
+      # PRs, and cannot be limited to master; the store is cached explicitly below.
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        id: pnpm-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      # Saved right after install so a failing test or build still refreshes it.
+      # Pruning first drops packages no longer in the lockfile, so a store restored
+      # from an older key does not grow without bound.
+      - name: Prune pnpm store
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        run: pnpm store prune
+
+      - name: Save pnpm store
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
+
+      - name: Test
+        run: pnpm test
+
+      # The build script runs `tsc` before `vite build`, so this also type-checks.
+      - name: Build
+        run: pnpm build
+
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: cargo-deny
+
+      # Advisories are checked separately in audit.yml (scheduled), so that a new
+      # RustSec entry does not turn unrelated pull requests red.
+      - name: Check bans, licenses and sources
+        run: cargo deny --manifest-path src-tauri/Cargo.toml check bans licenses sources
+
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Dependency review
+        uses: actions/dependency-review-action@bbc44d14a204704ccc493733616cd1e93a0321ec # v5.0.1
+        with:
+          fail-on-severity: high
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Go is preinstalled on ubuntu-latest; module hashes are verified by the Go checksum DB.
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Run actionlint
+        run: |
+          "$(go env GOPATH)/bin/actionlint" -color
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
+        with:
+          tool: zizmor
+
+      - name: Run zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: zizmor --format plain .
