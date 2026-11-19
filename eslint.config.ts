@@ -3,10 +3,20 @@ import globals from "globals"
 import tseslint from "typescript-eslint"
 import pluginReact from "eslint-plugin-react"
 import reactHooks from "eslint-plugin-react-hooks"
+import { reactRefresh } from "eslint-plugin-react-refresh"
 import jsxA11y from "eslint-plugin-jsx-a11y"
-import { defineConfig } from "eslint/config"
+import prettier from "eslint-config-prettier/flat"
+import { defineConfig, globalIgnores } from "eslint/config"
 
 export default defineConfig([
+  globalIgnores([
+    "dist/",
+    "src-tauri/",
+    "node_modules/",
+    // Vendored agent skills (see skills-lock.json), not application code.
+    ".agents/",
+    ".claude/",
+  ]),
   {
     files: ["**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
     plugins: { js },
@@ -18,5 +28,21 @@ export default defineConfig([
   pluginReact.configs.flat["jsx-runtime"],
   reactHooks.configs.flat.recommended,
   jsxA11y.flatConfigs.recommended,
+  {
+    files: ["src/**/*.{jsx,tsx}"],
+    extends: [reactRefresh.configs.vite()],
+    rules: {
+      // TEMPORARY: "warn" instead of the preset's "error". Five existing files
+      // export hooks or cva variants next to components (ThemeProvider.tsx and
+      // shadcn ui/button, combobox, sidebar, tabs). Fixing them means moving
+      // code between files; switch back to "error" once that is decided.
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true, allowCompoundComponents: true },
+      ],
+    },
+  },
   { settings: { react: { version: "detect" } } },
+  // Must stay last: turns off rules that conflict with Prettier formatting.
+  prettier,
 ])

@@ -19,9 +19,11 @@ on:
     - cron: "17 3 * * 1"
   workflow_dispatch:
 
+# Superseded PR runs are cancelled. Runs on master (push and schedule share the
+# refs/heads/master group) are not, so a push never cancels a running check.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
