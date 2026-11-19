@@ -149,7 +149,8 @@ jobs:
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
       - name: Run actionlint
-        run: "$(go env GOPATH)/bin/actionlint -color"
+        run: |
+          "$(go env GOPATH)/bin/actionlint" -color
 
   zizmor:
     name: zizmor
