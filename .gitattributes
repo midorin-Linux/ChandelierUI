@@ -1,0 +1,2 @@
+# sqlx hashes migration bytes; CRLF checkout breaks already-applied DBs.
+*.sql text eol=lf
