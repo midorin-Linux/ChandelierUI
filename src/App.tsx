@@ -166,7 +166,7 @@ function Chat({
     }
     // Same tick as `finish`, so the partial message is replaced without a gap.
     if (reply) await session.commit(sessionId, [...history, reply])
-    session.recordAttempt(sessionId, {
+    await session.recordAttempt(sessionId, {
       id,
       started_at: startedAt,
       retry,
@@ -194,10 +194,8 @@ function Chat({
 
   function submit(history: ChatMessage[], retry = false) {
     return exclusive(async () => {
-      const sessionId =
-        retry && session.activeId
-          ? session.activeId
-          : await session.persist(history, selectedModel)
+      // Retry saves too: an earlier save may have failed, or the model may have been unset.
+      const sessionId = await session.persist(history, selectedModel)
       if (!canSend) {
         if (!retry) {
           setError(

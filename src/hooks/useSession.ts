@@ -3,6 +3,7 @@ import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { storage } from "@/src/lib/storage"
 import { errorMessage } from "@/src/lib/utils"
+import { createWriteQueue } from "@/src/lib/writeQueue"
 import type { CompletionAttempt } from "@/src/types/analysis"
 import type { ChatMessage } from "@/src/types/chat"
 import type { SessionData, SessionSummary } from "@/src/types/session"
@@ -22,6 +23,11 @@ function emptyData(model: string): SessionData {
  * The active conversation and the session list, persisted through `storage`.
  * `data` is mirrored in a ref so debounced saves always see the latest value.
  * Callers must not switch sessions while a completion is in flight.
+ *
+ * Every storage write and load goes through one queue, so a load never sees
+ * data older than an earlier write. `rev` / `savedRev` track unsaved edits: a
+ * failed save keeps them dirty, and leaving the session then fails instead of
+ * discarding them.
  */
 export function useSession(
   onError: (message: string) => void,
@@ -36,6 +42,9 @@ export function useSession(
   const idRef = useRef<string | null>(null)
   const attemptCounter = useRef(0)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const [enqueue] = useState(createWriteQueue)
+  const rev = useRef(0)
+  const savedRev = useRef(0)
   const started = useRef(false)
   // True until the saved session has been restored; callers must not send meanwhile.
   const [restoring, setRestoring] = useState(true)
@@ -66,21 +75,31 @@ export function useSession(
     saveTimer.current = undefined
   }
 
-  /** Writes a pending debounced save now; call before leaving the session. */
+  /** Saves the current data; edits made while it runs stay dirty. */
+  const saveNow = useCallback(
+    async (id: string) => {
+      await enqueue(async () => {
+        const target = rev.current
+        await storage.saveSession(id, dataRef.current)
+        savedRev.current = Math.max(savedRev.current, target)
+      })
+      void refresh()
+    },
+    [enqueue, refresh]
+  )
+
+  /** Writes unsaved edits now. Rejects if that fails, so callers can abort leaving the session. */
   const flush = useCallback(async () => {
-    if (saveTimer.current === undefined) return
     cancelSave()
     const id = idRef.current
-    if (id) {
-      await storage.saveSession(id, dataRef.current).then(refresh).catch(fail)
-    }
-  }, [fail, refresh])
+    if (id && rev.current > savedRev.current) await saveNow(id)
+  }, [saveNow])
 
   const open = useCallback(
     async (id: string) => {
       await flush()
       try {
-        const loaded = await storage.loadSession(id)
+        const loaded = await enqueue(() => storage.loadSession(id))
         apply(loaded.data)
         setAttempts(loaded.attempts)
         attemptCounter.current = loaded.attempts.reduce(
@@ -93,7 +112,7 @@ export function useSession(
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- apply/activate only touch refs and stable setters, plus onActivate
-    [flush, fail, onActivate]
+    [flush, enqueue, fail, onActivate]
   )
 
   useEffect(() => {
@@ -114,12 +133,18 @@ export function useSession(
   // Write a pending debounced save before the window closes.
   useEffect(() => {
     if (!isTauri()) return
-    const unlisten = getCurrentWindow().onCloseRequested(() => flush())
+    // Close even if the save fails: a rejected handler would leave the window stuck open.
+    const unlisten = getCurrentWindow().onCloseRequested(() =>
+      flush().catch((cause) =>
+        console.error("Could not save before closing", cause)
+      )
+    )
     return () => void unlisten.then((stop) => stop())
   }, [flush])
 
   function reset(model: string) {
     cancelSave()
+    savedRev.current = rev.current
     apply(emptyData(model))
     setAttempts([])
     attemptCounter.current = 0
@@ -129,9 +154,13 @@ export function useSession(
   /** Model, effort and system prompt edits; saved 500ms after the last one. */
   function edit(patch: Partial<Omit<SessionData, "messages">>) {
     apply({ ...dataRef.current, ...patch })
+    rev.current++
     if (!idRef.current) return
     cancelSave()
-    saveTimer.current = setTimeout(() => void flush(), SAVE_DELAY_MS)
+    saveTimer.current = setTimeout(
+      () => void flush().catch(fail),
+      SAVE_DELAY_MS
+    )
   }
 
   /** Saves history before a request, creating the session on first use. Returns its id. */
@@ -142,14 +171,17 @@ export function useSession(
       model: model || dataRef.current.model,
     }
     apply(next)
+    rev.current++ // dirty until saved, so leaving the session retries a failed save
     cancelSave()
+    const target = rev.current
     let id = idRef.current
-    if (id) await storage.saveSession(id, next)
+    if (id) await saveNow(id)
     else {
-      id = (await storage.createSession(next)).id
+      id = (await enqueue(() => storage.createSession(next))).id
+      savedRev.current = Math.max(savedRev.current, target)
       activate(id)
+      void refresh()
     }
-    void refresh()
     return id
   }
 
@@ -157,12 +189,16 @@ export function useSession(
   async function commit(id: string, messages: ChatMessage[]) {
     if (idRef.current !== id) return
     apply({ ...dataRef.current, messages })
-    await storage.saveSession(id, dataRef.current).then(refresh).catch(fail)
+    rev.current++
+    await saveNow(id).catch(fail)
   }
 
-  function recordAttempt(id: string, attempt: CompletionAttempt) {
+  /** Resolves once the attempt is stored, so callers can hold their lock until then. */
+  async function recordAttempt(id: string, attempt: CompletionAttempt) {
     if (idRef.current === id) setAttempts((current) => [...current, attempt])
-    storage.appendAttempt(id, attempt).then(refresh).catch(fail)
+    await enqueue(() => storage.appendAttempt(id, attempt))
+      .then(refresh)
+      .catch(fail)
   }
 
   async function startNew(model: string) {
@@ -172,11 +208,15 @@ export function useSession(
 
   async function remove(id: string, model: string) {
     if (id === idRef.current) reset(model)
-    await storage.deleteSession(id).then(refresh).catch(fail)
+    await enqueue(() => storage.deleteSession(id))
+      .then(refresh)
+      .catch(fail)
   }
 
   async function rename(id: string, title: string) {
-    await storage.renameSession(id, title).then(refresh).catch(fail)
+    await enqueue(() => storage.renameSession(id, title))
+      .then(refresh)
+      .catch(fail)
   }
 
   return {
