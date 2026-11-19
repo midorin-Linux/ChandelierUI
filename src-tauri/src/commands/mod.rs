@@ -1,5 +1,6 @@
 mod client;
 mod metrics;
+pub mod sessions;
 pub mod settings;
 mod sse;
 mod stream;

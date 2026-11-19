@@ -1,6 +1,9 @@
+pub mod attempts;
+pub mod sessions;
 mod settings;
 #[cfg(test)]
 mod tests;
+mod types;
 
 use std::{
     fmt,
@@ -12,12 +15,14 @@ pub use settings::{get_all as get_settings, set as set_setting};
 use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
 };
+pub use types::{LoadedSession, SessionData, SessionSummary};
 
 pub struct Db(pub SqlitePool);
 
 #[derive(Debug)]
 pub enum StorageError {
     Sqlx(sqlx::Error),
+    NotFound(String),
     Invalid(String),
 }
 
@@ -25,6 +30,7 @@ impl fmt::Display for StorageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Sqlx(error) => write!(f, "database error: {error}"),
+            Self::NotFound(id) => write!(f, "not found: {id}"),
             Self::Invalid(reason) => write!(f, "invalid input: {reason}"),
         }
     }

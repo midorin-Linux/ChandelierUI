@@ -1,5 +1,6 @@
 mod commands;
 mod storage;
+mod types;
 
 use tauri::Manager;
 
@@ -21,6 +22,13 @@ pub fn run() {
             commands::list_models,
             commands::settings::get_settings,
             commands::settings::set_setting,
+            commands::sessions::list_sessions,
+            commands::sessions::create_session,
+            commands::sessions::load_session,
+            commands::sessions::save_session,
+            commands::sessions::rename_session,
+            commands::sessions::delete_session,
+            commands::sessions::append_attempt,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,49 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    System,
-    User,
-    Assistant,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Message {
-    pub(super) role: Role,
-    pub(super) content: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub(super) reasoning: String,
-}
+pub(crate) use crate::types::{Message, ReasoningEffort, Role};
 
 #[derive(Debug, Serialize, PartialEq)]
 pub struct CompletionDelta {
     pub(super) content: String,
     pub(super) reasoning: String,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningEffort {
-    #[serde(rename = "off")]
-    Off,
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl ReasoningEffort {
-    pub(super) fn wire(&self) -> &'static str {
-        match self {
-            Self::Off => "none",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Xhigh | Self::Max => "xhigh",
-        }
-    }
 }
 
 #[derive(Deserialize)]
