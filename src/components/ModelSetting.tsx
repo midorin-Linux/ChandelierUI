@@ -102,8 +102,8 @@ export function ModelSetting({
                       </FieldLabel>
                       <Textarea
                         id="system-prompt"
-                        placeholder="You are a helpful assistant."
-                        value={systemPrompt}
+                        placeholder={systemPrompt}
+                        // value={systemPrompt}
                         onChange={(event) =>
                           onSystemPromptChange(event.target.value)
                         }

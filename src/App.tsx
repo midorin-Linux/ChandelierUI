@@ -10,6 +10,9 @@ import { useModels } from "@/src/hooks/useModels"
 import { useSession } from "@/src/hooks/useSession"
 import {
   SETTING_BASE_URL,
+  SETTING_DEFAULT_EFFORT,
+  SETTING_DEFAULT_MODEL,
+  SETTING_DEFAULT_PROMPT,
   SETTING_LAST_SESSION,
   useSettings,
 } from "@/src/hooks/useSettings"
@@ -19,7 +22,12 @@ import { retryHead } from "@/src/lib/retry"
 import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
 import type { MeasuredCompletion } from "@/src/types/analysis"
-import type { CompletionDelta, ProviderChatRequest } from "@/src/types/chat"
+import {
+  efforts,
+  type CompletionDelta,
+  type ProviderChatRequest,
+  type SessionDefaults,
+} from "@/src/types/chat"
 import type { MessageNode } from "@/src/types/session"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
@@ -47,6 +55,18 @@ function Chat({
   const [providerUrl, setProviderUrlState] = useState(
     typeof savedUrl === "string" ? savedUrl : ""
   )
+  const [defaults, setDefaultsState] = useState<SessionDefaults>(() => ({
+    effort:
+      efforts.find((e) => e === settings[SETTING_DEFAULT_EFFORT]) ?? "off",
+    model:
+      typeof settings[SETTING_DEFAULT_MODEL] === "string"
+        ? settings[SETTING_DEFAULT_MODEL]
+        : "",
+    systemPrompt:
+      typeof settings[SETTING_DEFAULT_PROMPT] === "string"
+        ? settings[SETTING_DEFAULT_PROMPT]
+        : "",
+  }))
   const [apiKey, setApiKey] = useState("")
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
@@ -58,7 +78,8 @@ function Chat({
       (id: string | null) => setSetting(SETTING_LAST_SESSION, id),
       [setSetting]
     ),
-    typeof lastSession === "string" ? lastSession : null
+    typeof lastSession === "string" ? lastSession : null,
+    defaults
   )
   const {
     models,
@@ -93,6 +114,13 @@ function Chat({
   function setProviderUrl(url: string) {
     setProviderUrlState(url)
     setSetting(SETTING_BASE_URL, url)
+  }
+
+  function setDefaults(next: SessionDefaults) {
+    setDefaultsState(next)
+    setSetting(SETTING_DEFAULT_EFFORT, next.effort)
+    setSetting(SETTING_DEFAULT_MODEL, next.model)
+    setSetting(SETTING_DEFAULT_PROMPT, next.systemPrompt)
   }
 
   function openProviderSettings() {
@@ -274,6 +302,9 @@ function Chat({
           <AppSetting
             tab={settingsTab}
             onTabChange={setSettingsTab}
+            models={models}
+            defaults={defaults}
+            onDefaultsChange={setDefaults}
             provider={{
               providerUrl,
               setProviderUrl,

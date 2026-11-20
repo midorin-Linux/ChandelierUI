@@ -2,6 +2,7 @@ import { ServerIcon, SettingsIcon } from "lucide-react"
 import type { ComponentType } from "react"
 import { DialogContent, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
+import type { ApiModel, SessionDefaults } from "@/src/types/chat"
 import { GeneralSettings } from "@/src/components/setting/GeneralSettings"
 import {
   ProviderSettings,
@@ -18,10 +19,16 @@ const tabs: { id: SettingsTab; label: string; icon: ComponentType }[] = [
 export function AppSetting({
   tab,
   onTabChange,
+  models,
+  defaults,
+  onDefaultsChange,
   provider,
 }: {
   tab: SettingsTab
   onTabChange: (tab: SettingsTab) => void
+  models: ApiModel[]
+  defaults: SessionDefaults
+  onDefaultsChange: (defaults: SessionDefaults) => void
   provider: ProviderSettingsProps
 }) {
   const current = tabs.find(({ id }) => id === tab)!
@@ -51,7 +58,13 @@ export function AppSetting({
         </nav>
         <section className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 pl-6">
           <h2 className="mb-4 text-lg font-semibold">{current.label}</h2>
-          {tab === "general" && <GeneralSettings />}
+          {tab === "general" && (
+            <GeneralSettings
+              models={models}
+              defaults={defaults}
+              onDefaultsChange={onDefaultsChange}
+            />
+          )}
           {tab === "provider" && <ProviderSettings {...provider} />}
         </section>
       </div>
