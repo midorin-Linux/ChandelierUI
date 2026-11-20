@@ -60,9 +60,9 @@ export function useSettings() {
   const flushSettings = useCallback(() => {
     const entries = [...pending.current]
     entries.forEach(([key]) => cancelPending(key))
-    return Promise.all(entries.map(([key, { value }]) => write(key, value))).then(
-      () => undefined
-    )
+    return Promise.all(
+      entries.map(([key, { value }]) => write(key, value))
+    ).then(() => undefined)
   }, [cancelPending, write])
 
   const setSettingDebounced = useCallback(

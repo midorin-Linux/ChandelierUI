@@ -10,11 +10,7 @@ import {
   ComboboxList,
 } from "@/src/components/ui/combobox"
 import { Textarea } from "@/src/components/ui/textarea"
-import {
-  efforts,
-  type ApiModel,
-  type SessionDefaults,
-} from "@/src/types/chat"
+import { efforts, type ApiModel, type SessionDefaults } from "@/src/types/chat"
 import { Separator } from "@/src/components/ui/separator"
 
 export function GeneralSettings({
@@ -31,20 +27,20 @@ export function GeneralSettings({
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
   const dialogRef = useCallback(
     (node: HTMLElement | null) =>
-      setDialog(node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null),
+      setDialog(
+        node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null
+      ),
     []
   )
   // Keep a saved default visible while the list is empty or lacks it.
   const missingModel =
-    defaults.model !== "" && !models.some((model) => model.id === defaults.model)
+    defaults.model !== "" &&
+    !models.some((model) => model.id === defaults.model)
   const modelIds = models.map((model) => model.id)
   if (missingModel) modelIds.push(defaults.model)
 
   return (
-    <div
-      ref={dialogRef}
-      className="flex flex-col gap-8"
-    >
+    <div ref={dialogRef} className="flex flex-col gap-8">
       {/*Appearance*/}
       <div className="flex flex-col gap-3">
         <h3 className="text-base font-semibold">Appearance</h3>

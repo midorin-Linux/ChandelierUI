@@ -4,7 +4,11 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
 }
 
-const defaults = { effort: "high", model: "", systemPrompt: "Be brief." } as const
+const defaults = {
+  effort: "high",
+  model: "",
+  systemPrompt: "Be brief.",
+} as const
 
 assert(
   emptyData("current", defaults).model === "current",
@@ -18,7 +22,10 @@ assert(
 
 const data = emptyData("m", defaults)
 assert(data.reasoning_effort === "high", "Effort comes from the defaults")
-assert(data.system_prompt === "Be brief.", "System prompt comes from the defaults")
+assert(
+  data.system_prompt === "Be brief.",
+  "System prompt comes from the defaults"
+)
 assert(
   data.messages.length === 0 &&
     data.branches.main === null &&
