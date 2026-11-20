@@ -44,9 +44,7 @@ export function useSession(
 ) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [data, setData] = useState<SessionData>(() =>
-    emptyData("", defaults)
-  )
+  const [data, setData] = useState<SessionData>(() => emptyData("", defaults))
   const [attempts, setAttempts] = useState<CompletionAttempt[]>([])
   const dataRef = useRef(data)
   const idRef = useRef<string | null>(null)

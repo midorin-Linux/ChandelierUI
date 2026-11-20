@@ -7,11 +7,15 @@ import {
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
-  ComboboxList
-} from "@/src/components/ui/combobox.tsx";
-import {Textarea} from "@/src/components/ui/textarea.tsx";
-import {efforts, type ApiModel, type SessionDefaults} from "@/src/types/chat.ts";
-import {Separator} from "@/src/components/ui/separator.tsx";
+  ComboboxList,
+} from "@/src/components/ui/combobox.tsx"
+import { Textarea } from "@/src/components/ui/textarea.tsx"
+import {
+  efforts,
+  type ApiModel,
+  type SessionDefaults,
+} from "@/src/types/chat.ts"
+import { Separator } from "@/src/components/ui/separator.tsx"
 
 export function GeneralSettings({
   models,
@@ -28,7 +32,11 @@ export function GeneralSettings({
 
   return (
     <div
-      ref={(node) => setDialog(node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null)}
+      ref={(node) =>
+        setDialog(
+          node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null
+        )
+      }
       className="flex flex-col gap-8"
     >
       {/*Appearance*/}
@@ -114,7 +122,11 @@ export function GeneralSettings({
               onDefaultsChange({ ...defaults, model: value ?? "" })
             }
           >
-            <ComboboxInput placeholder="Select a model..." showClear className="w-full" />
+            <ComboboxInput
+              placeholder="Select a model..."
+              showClear
+              className="w-full"
+            />
             <ComboboxContent container={dialog}>
               <ComboboxEmpty>No models found.</ComboboxEmpty>
               <ComboboxList>
