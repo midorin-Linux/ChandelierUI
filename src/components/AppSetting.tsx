@@ -50,7 +50,7 @@ export function AppSetting({
           ))}
         </nav>
         <section className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 pl-6">
-          <h2 className="mb-4 text-sm font-semibold">{current.label}</h2>
+          <h2 className="mb-4 text-lg font-semibold">{current.label}</h2>
           {tab === "general" && <GeneralSettings />}
           {tab === "provider" && <ProviderSettings {...provider} />}
         </section>
