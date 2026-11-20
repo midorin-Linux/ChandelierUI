@@ -1,6 +1,13 @@
 export const efforts = ["off", "low", "medium", "high", "xhigh", "max"] as const
 export type Effort = (typeof efforts)[number]
 
+/** Applied to new sessions; an empty model keeps the current one. */
+export interface SessionDefaults {
+  effort: Effort
+  model: string
+  systemPrompt: string
+}
+
 export interface ApiModel {
   id: string
   context_length?: number | null

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { emptyData } from "@/src/lib/sessionDefaults"
 import { commit as commitNode } from "@/src/lib/sessionTree"
 import { storage } from "@/src/lib/storage"
 import { errorMessage } from "@/src/lib/utils"
 import { createWriteQueue } from "@/src/lib/writeQueue"
 import type { CompletionAttempt } from "@/src/types/analysis"
+import type { SessionDefaults } from "@/src/types/chat"
 import type {
   MessageNode,
   SessionData,
@@ -13,17 +15,6 @@ import type {
 } from "@/src/types/session"
 
 const SAVE_DELAY_MS = 500
-
-function emptyData(model: string): SessionData {
-  return {
-    model,
-    reasoning_effort: "medium",
-    system_prompt: "",
-    messages: [],
-    branches: { main: null },
-    current_branch: "main",
-  }
-}
 
 /**
  * The active conversation and the session list, persisted through `storage`.
@@ -38,11 +29,12 @@ function emptyData(model: string): SessionData {
 export function useSession(
   onError: (message: string) => void,
   onActivate: (id: string | null) => void,
-  initialId: string | null
+  initialId: string | null,
+  defaults: SessionDefaults
 ) {
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
-  const [data, setData] = useState<SessionData>(() => emptyData(""))
+  const [data, setData] = useState<SessionData>(() => emptyData("", defaults))
   const [attempts, setAttempts] = useState<CompletionAttempt[]>([])
   const dataRef = useRef(data)
   const idRef = useRef<string | null>(null)
@@ -151,7 +143,7 @@ export function useSession(
   function reset(model: string) {
     cancelSave()
     savedRev.current = rev.current
-    apply(emptyData(model))
+    apply(emptyData(model, defaults))
     setAttempts([])
     attemptCounter.current = 0
     activate(null)
