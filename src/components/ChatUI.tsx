@@ -13,6 +13,7 @@ import {
 } from "@/src/components/ui/trace"
 import { awaitsReply } from "@/src/lib/retry"
 import type { ChatMessage } from "@/src/types/chat"
+import type { MessageNode } from "@/src/types/session"
 
 export function ChatUI({
   messages,
@@ -23,7 +24,7 @@ export function ChatUI({
   canSend,
   onRetry,
 }: {
-  messages: readonly ChatMessage[]
+  messages: readonly MessageNode[]
   partialMessage: ChatMessage | null
   isPending: boolean
   /** Sending, switching or restoring: hides the missing-reply notice. */
@@ -50,12 +51,12 @@ export function ChatUI({
             Start a conversation. Chats are saved on this device.
           </p>
         ) : (
-          messages.map((message, index) =>
+          messages.map((message) =>
             message.role === "assistant" ? (
-              <AssistantMessage key={index} message={message} />
+              <AssistantMessage key={message.id} message={message} />
             ) : (
               <article
-                key={index}
+                key={message.id}
                 className="mb-4 ml-auto max-w-[85%] rounded-xl bg-muted p-3"
               >
                 <h2 className="mb-1 text-xs font-medium text-muted-foreground">

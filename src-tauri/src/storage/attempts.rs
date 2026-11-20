@@ -11,6 +11,12 @@ pub async fn append(
     let seq = attempt["id"]
         .as_i64()
         .ok_or_else(|| StorageError::Invalid("attempt.id is missing".into()))?;
+    if attempt["version"].as_i64() != Some(1) {
+        return Err(StorageError::Invalid(format!(
+            "attempt.version must be 1, got {}",
+            attempt["version"]
+        )));
+    }
     let started_at = attempt["started_at"].as_str().unwrap_or_default();
     let mut tx = pool.begin().await?;
     sqlx::query("INSERT INTO attempts (session_id, seq, started_at, data) VALUES (?1, ?2, ?3, ?4)")

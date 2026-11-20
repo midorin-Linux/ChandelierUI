@@ -5,8 +5,12 @@ import {
   providerLocation,
   redactPayload,
   summarizeAttempts,
+  toAttemptRequest,
 } from "./analysis.ts"
+import { pathToRoot } from "./sessionTree.ts"
 import type { CompletionAttempt, CompletionMetrics } from "../types/analysis.ts"
+import type { ProviderChatRequest } from "../types/chat.ts"
+import type { MessageNode } from "../types/session.ts"
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -56,17 +60,20 @@ function attempt(
   retry = false
 ): CompletionAttempt {
   return {
+    version: 1,
     id,
     started_at: "2026-11-15T00:00:00.000Z",
     retry,
     concurrency: 1,
     context_length: null,
-    payload: {
-      provider: { base_url: "http://localhost:8000/v1" },
-      request: { model: "test", reasoning_effort: "off", messages: [] },
+    request: {
+      base_url: "http://localhost:8000/v1",
+      model: "test",
+      reasoning_effort: "off",
+      system_prompt: "",
+      head_message_id: "u1",
     },
     result: {
-      message: null,
       error,
       metrics: { ...metrics, http_status: status, timed_out: timedOut },
     },
@@ -171,4 +178,53 @@ const blankKeyRedacted = redactPayload({
 assert(
   !("api_key" in blankKeyRedacted.provider),
   "Blank API keys are omitted from preview"
+)
+
+const tree: MessageNode[] = [
+  { id: "u1", parent_id: null, role: "user", content: "hi", created_at: 1 },
+  {
+    id: "a1",
+    parent_id: "u1",
+    role: "assistant",
+    content: "yo",
+    created_at: 2,
+  },
+  { id: "u2", parent_id: "a1", role: "user", content: "more", created_at: 3 },
+]
+const systemPrompt = "be brief"
+const sent: ProviderChatRequest = {
+  provider: { base_url: "https://api.example.com/v1", api_key: "sk-secret" },
+  request: {
+    model: "test",
+    reasoning_effort: "high",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "yo" },
+      { role: "user", content: "more" },
+    ],
+  },
+}
+const stored: CompletionAttempt = {
+  ...attempt(1, 200, null),
+  request: toAttemptRequest(sent, systemPrompt, "u2"),
+}
+const storedJson = JSON.stringify(stored)
+assert(
+  !storedJson.includes("api_key") && !storedJson.includes("sk-secret"),
+  "Stored attempts never contain the API key"
+)
+assert(
+  !storedJson.includes("more") && !("messages" in stored.request),
+  "Stored attempts hold no message contents"
+)
+assert(!("message" in stored.result), "Stored results have no reply message")
+assert(
+  JSON.stringify(sent.request.messages.slice(1)) ===
+    JSON.stringify(
+      pathToRoot(tree, stored.request.head_message_id).map(
+        ({ role, content }) => ({ role, content })
+      )
+    ),
+  "head_message_id reproduces the sent history"
 )

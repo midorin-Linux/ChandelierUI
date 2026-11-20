@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { commit as commitNode } from "@/src/lib/sessionTree"
 import { storage } from "@/src/lib/storage"
 import { errorMessage } from "@/src/lib/utils"
 import { createWriteQueue } from "@/src/lib/writeQueue"
 import type { CompletionAttempt } from "@/src/types/analysis"
-import type { ChatMessage } from "@/src/types/chat"
-import type { SessionData, SessionSummary } from "@/src/types/session"
+import type {
+  MessageNode,
+  SessionData,
+  SessionSummary,
+} from "@/src/types/session"
 
 const SAVE_DELAY_MS = 500
 
@@ -16,6 +20,8 @@ function emptyData(model: string): SessionData {
     reasoning_effort: "medium",
     system_prompt: "",
     messages: [],
+    branches: { main: null },
+    current_branch: "main",
   }
 }
 
@@ -152,7 +158,11 @@ export function useSession(
   }
 
   /** Model, effort and system prompt edits; saved 500ms after the last one. */
-  function edit(patch: Partial<Omit<SessionData, "messages">>) {
+  function edit(
+    patch: Partial<
+      Omit<SessionData, "messages" | "branches" | "current_branch">
+    >
+  ) {
     apply({ ...dataRef.current, ...patch })
     rev.current++
     if (!idRef.current) return
@@ -163,13 +173,10 @@ export function useSession(
     )
   }
 
-  /** Saves history before a request, creating the session on first use. Returns its id. */
-  async function persist(messages: ChatMessage[], model: string) {
-    const next = {
-      ...dataRef.current,
-      messages,
-      model: model || dataRef.current.model,
-    }
+  /** Commits `node` if given, then saves before a request, creating the session on first use. Returns its id. */
+  async function persist(node: MessageNode | null, model: string) {
+    const base = { ...dataRef.current, model: model || dataRef.current.model }
+    const next = node ? commitNode(base, node) : base
     apply(next)
     rev.current++ // dirty until saved, so leaving the session retries a failed save
     cancelSave()
@@ -186,9 +193,9 @@ export function useSession(
   }
 
   /** Saves the finished reply to the session the request started in. */
-  async function commit(id: string, messages: ChatMessage[]) {
+  async function commit(id: string, node: MessageNode) {
     if (idRef.current !== id) return
-    apply({ ...dataRef.current, messages })
+    apply(commitNode(dataRef.current, node))
     rev.current++
     await saveNow(id).catch(fail)
   }

@@ -1,10 +1,13 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use serde_json::json;
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
-use super::{SessionData, StorageError, attempts, get_settings, sessions, set_setting};
-use crate::types::{Message, ReasoningEffort, Role};
+use super::{
+    SessionData, StorageError, attempts, get_settings, sessions, set_setting,
+    types::{MessageNode, NodeRole},
+};
+use crate::types::ReasoningEffort;
 
 /// `sqlite::memory:` is a separate database per connection, so pin one connection
 /// and never let the pool reap it.
@@ -51,16 +54,25 @@ fn data(text: &str) -> SessionData {
         model: "m".into(),
         reasoning_effort: ReasoningEffort::Medium,
         system_prompt: String::new(),
-        messages: vec![Message {
-            role: Role::User,
-            content: text.into(),
-            reasoning: String::new(),
-        }],
+        messages: vec![node("u1", None, NodeRole::User, text)],
+        branches: BTreeMap::from([("main".into(), Some("u1".into()))]),
+        current_branch: "main".into(),
+    }
+}
+
+fn node(id: &str, parent: Option<&str>, role: NodeRole, text: &str) -> MessageNode {
+    MessageNode {
+        id: id.into(),
+        parent_id: parent.map(Into::into),
+        role,
+        content: text.into(),
+        reasoning: String::new(),
+        created_at: 1,
     }
 }
 
 fn attempt(seq: i64) -> serde_json::Value {
-    json!({ "id": seq, "started_at": "2026-11-19T00:00:00Z", "retry": false })
+    json!({ "id": seq, "version": 1, "started_at": "2026-11-19T00:00:00Z", "retry": false })
 }
 
 #[tokio::test]
@@ -124,7 +136,7 @@ async fn attempts_are_ordered_unique_and_cascade_on_delete() {
         Err(StorageError::Sqlx(_))
     ));
     assert!(matches!(
-        attempts::append(&pool, &id, &json!({})).await,
+        attempts::append(&pool, &id, &json!({ "version": 1 })).await,
         Err(StorageError::Invalid(_))
     ));
     let loaded = sessions::load(&pool, &id).await.unwrap();
@@ -151,4 +163,98 @@ async fn list_is_newest_updated_first() {
         .map(|session| session.id)
         .collect();
     assert_eq!(ids, vec![a, b]);
+}
+
+#[tokio::test]
+async fn tree_roundtrips_with_null_heads_and_reasoning() {
+    let pool = memory_pool().await;
+    let mut tree = data("hi");
+    tree.messages
+        .push(node("a1", Some("u1"), NodeRole::Assistant, "yo"));
+    tree.messages[1].reasoning = "thinking".into();
+    tree.branches.insert("main".into(), Some("a1".into()));
+    tree.branches.insert("empty".into(), None);
+    let id = sessions::create(&pool, &tree).await.unwrap().id;
+    assert_eq!(sessions::load(&pool, &id).await.unwrap().data, tree);
+    let empty = SessionData {
+        messages: vec![],
+        branches: BTreeMap::from([("main".into(), None)]),
+        ..data("")
+    };
+    sessions::save(&pool, &id, None, &empty).await.unwrap();
+    assert_eq!(sessions::load(&pool, &id).await.unwrap().data, empty);
+    let version: i64 = sqlx::query_scalar("SELECT schema_version FROM sessions WHERE id = ?1")
+        .bind(&id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(version, 2);
+}
+
+#[tokio::test]
+async fn schema_version_1_row_is_rejected_on_load() {
+    let pool = memory_pool().await;
+    sqlx::query(
+        "INSERT INTO sessions (id, created_at, updated_at, data) VALUES ('old', 1, 1, ?1)",
+    )
+    .bind(r#"{"model":"m","reasoning_effort":"medium","system_prompt":"","messages":[{"role":"user","content":"hi"}]}"#)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let error = sessions::load(&pool, "old").await.unwrap_err();
+    assert!(matches!(&error, StorageError::Invalid(reason) if reason.contains("schema_version 1")));
+}
+
+#[tokio::test]
+async fn invalid_trees_are_rejected_on_create_and_save() {
+    let pool = memory_pool().await;
+    let id = sessions::create(&pool, &data("hi")).await.unwrap().id;
+    let mut missing_parent = data("hi");
+    missing_parent.messages[0].parent_id = Some("nope".into());
+    let mut forward_parent = data("hi");
+    forward_parent
+        .messages
+        .insert(0, node("a1", Some("u1"), NodeRole::Assistant, "x"));
+    let mut duplicate = data("hi");
+    duplicate
+        .messages
+        .push(node("u1", None, NodeRole::User, "again"));
+    let mut missing_head = data("hi");
+    missing_head
+        .branches
+        .insert("main".into(), Some("nope".into()));
+    let mut missing_branch = data("hi");
+    missing_branch.current_branch = "other".into();
+    for bad in [
+        missing_parent,
+        forward_parent,
+        duplicate,
+        missing_head,
+        missing_branch,
+    ] {
+        assert!(matches!(
+            sessions::create(&pool, &bad).await,
+            Err(StorageError::Invalid(_))
+        ));
+        assert!(matches!(
+            sessions::save(&pool, &id, None, &bad).await,
+            Err(StorageError::Invalid(_))
+        ));
+    }
+    assert_eq!(sessions::load(&pool, &id).await.unwrap().data, data("hi"));
+}
+
+#[tokio::test]
+async fn attempt_versions_other_than_1_are_rejected() {
+    let pool = memory_pool().await;
+    let id = sessions::create(&pool, &data("hi")).await.unwrap().id;
+    for bad in [json!({ "id": 1 }), json!({ "id": 1, "version": 2 })] {
+        assert!(matches!(
+            attempts::append(&pool, &id, &bad).await,
+            Err(StorageError::Invalid(_))
+        ));
+    }
+    attempts::append(&pool, &id, &attempt(1)).await.unwrap();
+    let loaded = sessions::load(&pool, &id).await.unwrap();
+    assert_eq!(loaded.attempts, vec![attempt(1)]);
 }

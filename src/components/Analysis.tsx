@@ -145,9 +145,7 @@ export function Analysis({
       : (attempts.find((attempt) => attempt.id === selectedId) ?? latest)
   const summary = summarizeAttempts(attempts)
   const metrics = selected?.result.metrics
-  const location = selected
-    ? providerLocation(selected.payload.provider.base_url)
-    : null
+  const location = selected ? providerLocation(selected.request.base_url) : null
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -247,19 +245,16 @@ export function Analysis({
                   <MetricSection
                     title="Request snapshot"
                     rows={[
-                      ["Model", selected.payload.request.model],
+                      ["Model", selected.request.model],
                       ["Provider", location.provider],
-                      ["Base URL", selected.payload.provider.base_url],
+                      ["Base URL", selected.request.base_url],
                       ["Location", location.classification],
                       ["Endpoint path", location.endpoint],
                       ["Started at", selected.started_at],
                       ["Temperature", "Provider default (not sent)"],
                       ["max_tokens", "Provider default (not sent)"],
                       ["Streaming transport", "true (SSE; usage requested)"],
-                      [
-                        "Reasoning effort",
-                        selected.payload.request.reasoning_effort,
-                      ],
+                      ["Reasoning effort", selected.request.reasoning_effort],
                       [
                         "Input tokens (API usage)",
                         formatMetric(metrics.input_tokens, "tokens", 0),
