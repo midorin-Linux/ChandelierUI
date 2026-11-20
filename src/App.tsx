@@ -34,11 +34,11 @@ import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
-  const { settings, setSetting } = useSettings()
+  const { settings, ...store } = useSettings()
   // The theme stays outside the settings gate so it applies without waiting for IPC.
   return (
     <ThemeProvider defaultTheme="system">
-      {settings && <Chat settings={settings} setSetting={setSetting} />}
+      {settings && <Chat settings={settings} {...store} />}
     </ThemeProvider>
   )
 }
@@ -46,9 +46,13 @@ function App() {
 function Chat({
   settings,
   setSetting,
+  setSettingDebounced,
+  flushSettings,
 }: {
   settings: Record<string, unknown>
   setSetting: (key: string, value: unknown) => void
+  setSettingDebounced: (key: string, value: unknown) => void
+  flushSettings: () => Promise<void>
 }) {
   const savedUrl = settings[SETTING_BASE_URL]
   const lastSession = settings[SETTING_LAST_SESSION]
@@ -118,9 +122,13 @@ function Chat({
 
   function setDefaults(next: SessionDefaults) {
     setDefaultsState(next)
-    setSetting(SETTING_DEFAULT_EFFORT, next.effort)
-    setSetting(SETTING_DEFAULT_MODEL, next.model)
-    setSetting(SETTING_DEFAULT_PROMPT, next.systemPrompt)
+    if (next.effort !== defaults.effort)
+      setSetting(SETTING_DEFAULT_EFFORT, next.effort)
+    if (next.model !== defaults.model)
+      setSetting(SETTING_DEFAULT_MODEL, next.model)
+    // Typed key by key, so saved once typing pauses.
+    if (next.systemPrompt !== defaults.systemPrompt)
+      setSettingDebounced(SETTING_DEFAULT_PROMPT, next.systemPrompt)
   }
 
   function openProviderSettings() {
@@ -298,7 +306,13 @@ function Chat({
           }
           onOpenSettings={() => setAppSettingsOpen(true)}
         />
-        <Dialog open={appSettingsOpen} onOpenChange={setAppSettingsOpen}>
+        <Dialog
+          open={appSettingsOpen}
+          onOpenChange={(open) => {
+            setAppSettingsOpen(open)
+            if (!open) void flushSettings()
+          }}
+        >
           <AppSetting
             tab={settingsTab}
             onTabChange={setSettingsTab}
