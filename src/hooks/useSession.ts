@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
+import { emptyData } from "@/src/lib/sessionDefaults"
 import { commit as commitNode } from "@/src/lib/sessionTree"
 import { storage } from "@/src/lib/storage"
 import { errorMessage } from "@/src/lib/utils"
@@ -14,17 +15,6 @@ import type {
 } from "@/src/types/session"
 
 const SAVE_DELAY_MS = 500
-
-function emptyData(model: string, defaults: SessionDefaults): SessionData {
-  return {
-    model: defaults.model || model,
-    reasoning_effort: defaults.effort,
-    system_prompt: defaults.systemPrompt,
-    messages: [],
-    branches: { main: null },
-    current_branch: "main",
-  }
-}
 
 /**
  * The active conversation and the session list, persisted through `storage`.

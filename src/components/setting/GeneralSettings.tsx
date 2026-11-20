@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useCallback, useState } from "react"
 import { Tabs, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
 import { useTheme } from "@/src/components/ThemeProvider"
 import {
@@ -8,14 +8,14 @@ import {
   ComboboxInput,
   ComboboxItem,
   ComboboxList,
-} from "@/src/components/ui/combobox.tsx"
-import { Textarea } from "@/src/components/ui/textarea.tsx"
+} from "@/src/components/ui/combobox"
+import { Textarea } from "@/src/components/ui/textarea"
 import {
   efforts,
   type ApiModel,
   type SessionDefaults,
-} from "@/src/types/chat.ts"
-import { Separator } from "@/src/components/ui/separator.tsx"
+} from "@/src/types/chat"
+import { Separator } from "@/src/components/ui/separator"
 
 export function GeneralSettings({
   models,
@@ -29,6 +29,11 @@ export function GeneralSettings({
   const { theme, setTheme } = useTheme()
   // A body-level portal counts as outside the Radix dialog, so clicks never select.
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
+  const dialogRef = useCallback(
+    (node: HTMLElement | null) =>
+      setDialog(node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null),
+    []
+  )
   // Keep a saved default visible while the list is empty or lacks it.
   const missingModel =
     defaults.model !== "" && !models.some((model) => model.id === defaults.model)
@@ -37,11 +42,7 @@ export function GeneralSettings({
 
   return (
     <div
-      ref={(node) =>
-        setDialog(
-          node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null
-        )
-      }
+      ref={dialogRef}
       className="flex flex-col gap-8"
     >
       {/*Appearance*/}
@@ -122,7 +123,7 @@ export function GeneralSettings({
           </div>
           {missingModel && (
             <p className="text-sm text-muted-foreground">
-              Not in the current provider's model list.
+              Not in the current model list.
             </p>
           )}
           <Combobox
