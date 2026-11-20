@@ -15,6 +15,7 @@ import {
 } from "@/src/hooks/useSettings"
 import { emptyMetrics, toAttemptRequest } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
+import { retryHead } from "@/src/lib/retry"
 import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
 import type { MeasuredCompletion } from "@/src/types/analysis"
@@ -206,6 +207,8 @@ function Chat({
   /** `node` is the user message to commit first; a retry passes `null` and resends from the head. */
   function submit(headId: string, node: MessageNode | null) {
     const retry = node === null
+    // A retry must end with the user message it resends; anything else is a no-op.
+    if (retry && retryHead(messages) !== headId) return Promise.resolve()
     const history = node ? [...messages, node] : messages
     return exclusive(async () => {
       // Retry saves too: an earlier save may have failed, or the model may have been unset.
@@ -305,7 +308,8 @@ function Chat({
                 error={error}
                 canSend={canSend}
                 onRetry={() => {
-                  if (head) void submit(head, null)
+                  const retryFrom = retryHead(messages)
+                  if (retryFrom) void submit(retryFrom, null)
                 }}
               />
               <div
