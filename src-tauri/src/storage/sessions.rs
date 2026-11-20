@@ -1,16 +1,21 @@
 use sqlx::{FromRow, SqlitePool, types::Json};
 use uuid::Uuid;
 
-use super::{LoadedSession, SessionData, SessionSummary, StorageError, attempts, now_ms};
-use crate::types::Role;
+use super::{
+    LoadedSession, SessionData, SessionSummary, StorageError, attempts, now_ms, types::NodeRole,
+};
 
 const TITLE_CHARS: usize = 40;
+/// JSON shape version of `sessions.data`; the column default (1) is the old flat shape.
+const SCHEMA_VERSION: i64 = 2;
 
 #[derive(FromRow)]
 struct Row {
     #[sqlx(flatten)]
     summary: SessionSummary,
-    data: Json<SessionData>,
+    schema_version: i64,
+    // Decoded after the version check, so an old shape is reported as such.
+    data: String,
 }
 
 pub async fn list(pool: &SqlitePool) -> Result<Vec<SessionSummary>, StorageError> {
@@ -23,10 +28,11 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<SessionSummary>, StorageError
 
 /// The title is the first user message, truncated.
 pub async fn create(pool: &SqlitePool, data: &SessionData) -> Result<SessionSummary, StorageError> {
+    data.validate()?;
     let title = data
         .messages
         .iter()
-        .find(|message| message.role == Role::User)
+        .find(|message| message.role == NodeRole::User)
         .map(|message| message.content.trim().chars().take(TITLE_CHARS).collect())
         .unwrap_or_default();
     let now = now_ms();
@@ -37,12 +43,13 @@ pub async fn create(pool: &SqlitePool, data: &SessionData) -> Result<SessionSumm
         updated_at: now,
     };
     sqlx::query(
-        "INSERT INTO sessions (id, title, created_at, updated_at, data) VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO sessions (id, title, created_at, updated_at, schema_version, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
     )
     .bind(&summary.id)
     .bind(&summary.title)
     .bind(summary.created_at)
     .bind(summary.updated_at)
+    .bind(SCHEMA_VERSION)
     .bind(Json(data))
     .execute(pool)
     .await?;
@@ -51,15 +58,24 @@ pub async fn create(pool: &SqlitePool, data: &SessionData) -> Result<SessionSumm
 
 pub async fn load(pool: &SqlitePool, id: &str) -> Result<LoadedSession, StorageError> {
     let row: Row = sqlx::query_as(
-        "SELECT id, title, created_at, updated_at, data FROM sessions WHERE id = ?1",
+        "SELECT id, title, created_at, updated_at, schema_version, data FROM sessions WHERE id = ?1",
     )
     .bind(id)
     .fetch_optional(pool)
     .await?
     .ok_or_else(|| StorageError::NotFound(id.to_owned()))?;
+    if row.schema_version != SCHEMA_VERSION {
+        return Err(StorageError::Invalid(format!(
+            "session {id} has schema_version {}; expected {SCHEMA_VERSION}. Reset the database to use it with this version",
+            row.schema_version
+        )));
+    }
+    let data: SessionData = serde_json::from_str(&row.data)
+        .map_err(|error| StorageError::Invalid(format!("session {id} is unreadable: {error}")))?;
+    data.validate()?;
     Ok(LoadedSession {
         summary: row.summary,
-        data: row.data.0,
+        data,
         attempts: attempts::list(pool, id).await?,
     })
 }
@@ -70,14 +86,16 @@ pub async fn save(
     title: Option<&str>,
     data: &SessionData,
 ) -> Result<i64, StorageError> {
+    data.validate()?;
     let now = now_ms();
     let result = sqlx::query(
-        "UPDATE sessions SET data = ?2, title = COALESCE(?3, title), updated_at = ?4 WHERE id = ?1",
+        "UPDATE sessions SET data = ?2, title = COALESCE(?3, title), updated_at = ?4, schema_version = ?5 WHERE id = ?1",
     )
     .bind(id)
     .bind(Json(data))
     .bind(title)
     .bind(now)
+    .bind(SCHEMA_VERSION)
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {

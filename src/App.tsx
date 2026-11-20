@@ -1,5 +1,5 @@
 import "./App.css"
-import { useCallback, useReducer, useRef, useState } from "react"
+import { useCallback, useMemo, useReducer, useRef, useState } from "react"
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 import { Analysis } from "@/src/components/Analysis"
 import { ChatUI } from "@/src/components/ChatUI"
@@ -13,15 +13,13 @@ import {
   SETTING_LAST_SESSION,
   useSettings,
 } from "@/src/hooks/useSettings"
-import { emptyMetrics, redactPayload } from "@/src/lib/analysis"
+import { emptyMetrics, toAttemptRequest } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
+import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
 import type { MeasuredCompletion } from "@/src/types/analysis"
-import type {
-  ChatMessage,
-  CompletionDelta,
-  ProviderChatRequest,
-} from "@/src/types/chat"
+import type { CompletionDelta, ProviderChatRequest } from "@/src/types/chat"
+import type { MessageNode } from "@/src/types/session"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
@@ -73,7 +71,11 @@ function Chat({
   )
   const selectedEffort = session.data.reasoning_effort
   const systemPrompt = session.data.system_prompt
-  const messages = session.data.messages
+  const head = session.data.branches[session.data.current_branch]
+  const messages = useMemo(
+    () => pathToRoot(session.data.messages, head),
+    [session.data.messages, head]
+  )
   const [stream, dispatchStream] = useReducer(completionStream, {
     attemptId: 0,
     isPending: false,
@@ -97,7 +99,7 @@ function Chat({
     setAppSettingsOpen(true)
   }
 
-  function buildPayload(history: ChatMessage[]): ProviderChatRequest {
+  function buildPayload(history: readonly MessageNode[]): ProviderChatRequest {
     const trimmedKey = apiKey.trim()
     return {
       provider: {
@@ -119,7 +121,8 @@ function Chat({
 
   async function requestCompletion(
     sessionId: string,
-    history: ChatMessage[],
+    headId: string,
+    history: MessageNode[],
     retry: boolean
   ) {
     setError(null)
@@ -131,7 +134,7 @@ function Chat({
     const contextLength =
       models.find((model) => model.id === selectedModel)?.context_length ?? null
     let result: MeasuredCompletion
-    let reply: ChatMessage | null = null
+    let reply: MessageNode | null = null
     try {
       if (!isTauri()) {
         throw new Error(
@@ -147,7 +150,14 @@ function Chat({
       })
       if (result.error) setError(result.error)
       else if (result.message) {
-        reply = result.message
+        reply = {
+          id: crypto.randomUUID(),
+          parent_id: headId,
+          role: "assistant",
+          content: result.message.content,
+          reasoning: result.message.reasoning,
+          created_at: Date.now(),
+        }
       }
     } catch (cause) {
       const message = errorMessage(cause)
@@ -165,15 +175,16 @@ function Chat({
       })
     }
     // Same tick as `finish`, so the partial message is replaced without a gap.
-    if (reply) await session.commit(sessionId, [...history, reply])
+    if (reply) await session.commit(sessionId, reply)
     await session.recordAttempt(sessionId, {
+      version: 1,
       id,
       started_at: startedAt,
       retry,
       concurrency: 1,
-      payload: redactPayload(requestPayload),
+      request: toAttemptRequest(requestPayload, systemPrompt, headId),
       context_length: contextLength,
-      result,
+      result: { error: result.error, metrics: result.metrics },
     })
   }
 
@@ -192,10 +203,13 @@ function Chat({
     }
   }
 
-  function submit(history: ChatMessage[], retry = false) {
+  /** `node` is the user message to commit first; a retry passes `null` and resends from the head. */
+  function submit(headId: string, node: MessageNode | null) {
+    const retry = node === null
+    const history = node ? [...messages, node] : messages
     return exclusive(async () => {
       // Retry saves too: an earlier save may have failed, or the model may have been unset.
-      const sessionId = await session.persist(history, selectedModel)
+      const sessionId = await session.persist(node, selectedModel)
       if (!canSend) {
         if (!retry) {
           setError(
@@ -204,13 +218,20 @@ function Chat({
         }
         return
       }
-      await requestCompletion(sessionId, history, retry)
+      await requestCompletion(sessionId, headId, history, retry)
     })
   }
 
   function sendMessage(content: string) {
     if (inFlight.current || session.restoring || !content.trim()) return false
-    void submit([...messages, { role: "user", content }])
+    const node: MessageNode = {
+      id: crypto.randomUUID(),
+      parent_id: head,
+      role: "user",
+      content,
+      created_at: Date.now(),
+    }
+    void submit(node.id, node)
     return true
   }
 
@@ -283,7 +304,9 @@ function Chat({
                 busy={busy}
                 error={error}
                 canSend={canSend}
-                onRetry={() => void submit(messages, true)}
+                onRetry={() => {
+                  if (head) void submit(head, null)
+                }}
               />
               <div
                 className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"

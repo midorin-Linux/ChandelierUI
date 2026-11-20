@@ -1,4 +1,8 @@
-import type { CompletionAttempt, CompletionMetrics } from "../types/analysis"
+import type {
+  AttemptRequest,
+  CompletionAttempt,
+  CompletionMetrics,
+} from "../types/analysis"
 import type { ProviderChatRequest } from "../types/chat"
 
 export function redactPayload(
@@ -11,6 +15,21 @@ export function redactPayload(
   return {
     ...payload,
     provider: { ...provider, api_key: "[REDACTED]" },
+  }
+}
+
+/** Field by field, so the API key and message contents can never be stored. */
+export function toAttemptRequest(
+  payload: ProviderChatRequest,
+  systemPrompt: string,
+  headMessageId: string
+): AttemptRequest {
+  return {
+    base_url: payload.provider.base_url,
+    model: payload.request.model,
+    reasoning_effort: payload.request.reasoning_effort,
+    system_prompt: systemPrompt,
+    head_message_id: headMessageId,
   }
 }
 

@@ -10,7 +10,11 @@ const data = (content: string): SessionData => ({
   model: "m",
   reasoning_effort: "medium",
   system_prompt: "",
-  messages: [{ role: "user", content }],
+  messages: [
+    { id: "u1", parent_id: null, role: "user", content, created_at: 1 },
+  ],
+  branches: { main: "u1" },
+  current_branch: "main",
 })
 const attempt = (id: number) => ({ id }) as CompletionAttempt
 

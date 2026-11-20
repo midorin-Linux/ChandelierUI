@@ -1,12 +1,23 @@
 import type { CompletionAttempt } from "./analysis.ts"
-import type { ChatMessage, Effort } from "./chat.ts"
+import type { Effort } from "./chat.ts"
 
-/** Mirrors `SessionData` (schema_version 1) in src-tauri/src/storage/types.rs. */
+export interface MessageNode {
+  id: string // crypto.randomUUID()
+  parent_id: string | null // null only for the first message
+  role: "user" | "assistant"
+  content: string
+  reasoning?: string
+  created_at: number // Unix ms
+}
+
+/** Mirrors `SessionData` (schema_version 2) in src-tauri/src/storage/types.rs. */
 export interface SessionData {
   model: string
   reasoning_effort: Effort
   system_prompt: string
-  messages: ChatMessage[]
+  messages: MessageNode[] // append-only, never mutated or removed
+  branches: Record<string, string | null> // branch name -> head message id
+  current_branch: string // "main" for new sessions
 }
 
 export interface SessionSummary {
