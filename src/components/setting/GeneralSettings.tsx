@@ -29,6 +29,11 @@ export function GeneralSettings({
   const { theme, setTheme } = useTheme()
   // A body-level portal counts as outside the Radix dialog, so clicks never select.
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
+  // Keep a saved default visible while the list is empty or lacks it.
+  const missingModel =
+    defaults.model !== "" && !models.some((model) => model.id === defaults.model)
+  const modelIds = models.map((model) => model.id)
+  if (missingModel) modelIds.push(defaults.model)
 
   return (
     <div
@@ -115,8 +120,13 @@ export function GeneralSettings({
               Model ID for new sessions. Leave empty to keep the current model.
             </p>
           </div>
+          {missingModel && (
+            <p className="text-sm text-muted-foreground">
+              Not in the current provider's model list.
+            </p>
+          )}
           <Combobox
-            items={models.map((model) => model.id)}
+            items={modelIds}
             value={defaults.model || null}
             onValueChange={(value) =>
               onDefaultsChange({ ...defaults, model: value ?? "" })
