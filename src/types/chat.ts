@@ -32,8 +32,8 @@ export interface ChatCompletionRequest {
 }
 
 export interface ProviderChatRequest {
-  // The key itself never leaves the backend; `api_key` is only ever redacted.
-  provider: { id?: string; base_url: string; api_key?: string }
+  // The API key never leaves the backend; it is loaded from the keyring by `id`.
+  provider: { id?: string; base_url: string }
   request: ChatCompletionRequest
 }
 

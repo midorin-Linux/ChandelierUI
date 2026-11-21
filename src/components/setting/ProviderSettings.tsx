@@ -40,6 +40,12 @@ export interface ProviderSettingsProps {
   onRefreshModels: () => void
 }
 
+/** `has_api_key` results per provider id, so opening settings doesn't hit the keyring each time. */
+const savedKeys = new Map<string, boolean>()
+
+/** Display name; an emptied name is kept as is but shown as "Untitled". */
+const label = (preset: ProviderPreset) => preset.name.trim() || "Untitled"
+
 /** Never shows the stored key: it only reports whether one is saved. Keyed by provider id. */
 function ApiKeyField({
   providerId,
@@ -48,15 +54,20 @@ function ApiKeyField({
   providerId: string
   onChanged: () => void
 }) {
-  const [hasKey, setHasKey] = useState<boolean | null>(isTauri() ? null : false)
+  const [hasKey, setHasKey] = useState<boolean | null>(
+    isTauri() ? (savedKeys.get(providerId) ?? null) : false
+  )
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isTauri()) return
+    if (!isTauri() || savedKeys.has(providerId)) return
     let stale = false
     invoke<boolean>("has_api_key", { providerId })
-      .then((saved) => !stale && setHasKey(saved))
+      .then((saved) => {
+        savedKeys.set(providerId, saved)
+        if (!stale) setHasKey(saved)
+      })
       .catch((cause) => !stale && setError(errorMessage(cause)))
     return () => {
       stale = true
@@ -69,6 +80,7 @@ function ApiKeyField({
       if (!isTauri())
         throw new Error("Saving keys requires the Tauri desktop app.")
       await invoke(command, { providerId, ...args })
+      savedKeys.set(providerId, saved)
       setHasKey(saved)
       setInput("")
       onChanged()
@@ -192,7 +204,7 @@ export function ProviderSettings({
           <Combobox
             items={presets}
             value={active}
-            itemToStringLabel={(preset: ProviderPreset) => preset.name}
+            itemToStringLabel={label}
             isItemEqualToValue={(a: ProviderPreset, b: ProviderPreset) =>
               a.id === b.id
             }
@@ -203,7 +215,7 @@ export function ProviderSettings({
               <ComboboxList>
                 {(preset: ProviderPreset) => (
                   <ComboboxItem key={preset.id} value={preset}>
-                    {preset.name}
+                    {label(preset)}
                   </ComboboxItem>
                 )}
               </ComboboxList>
@@ -239,8 +251,8 @@ export function ProviderSettings({
           <DialogHeader>
             <DialogTitle>Delete provider</DialogTitle>
             <DialogDescription>
-              Delete the provider &quot;{active?.name}&quot;? Its saved API key
-              is also removed from the system keyring.
+              Delete the provider &quot;{active && label(active)}&quot;? Its
+              saved API key is also removed from the system keyring.
             </DialogDescription>
           </DialogHeader>
           {deleteError && (

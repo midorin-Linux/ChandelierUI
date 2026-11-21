@@ -17,26 +17,30 @@ export function useModels(
 ) {
   const [modelList, setModelList] = useState<{
     providerUrl: string
+    providerId: string | null
     models: ApiModel[]
     isLoading: boolean
     error: string | null
   }>({
     providerUrl: "",
+    providerId: null,
     models: [],
     isLoading: false,
     error: null,
   })
   const [modelsRefresh, setModelsRefresh] = useState(0)
-  const models = modelList.providerUrl === providerUrl ? modelList.models : []
-  const modelsLoading =
-    modelList.providerUrl === providerUrl
-      ? modelList.isLoading
-      : Boolean(providerUrl.trim())
+  // Two presets may share a URL but not a key, so the list belongs to the pair.
+  const current =
+    modelList.providerUrl === providerUrl && modelList.providerId === providerId
+  const models = current ? modelList.models : []
+  const modelsLoading = current
+    ? modelList.isLoading
+    : Boolean(providerUrl.trim())
   const selectedModel = models.some((model) => model.id === preferredModel)
     ? preferredModel
     : (models[0]?.id ?? "")
   const modelsStatus =
-    modelList.providerUrl === providerUrl && modelList.error
+    current && modelList.error
       ? modelList.error
       : modelsLoading
         ? "Loading models…"
@@ -83,6 +87,7 @@ export function useModels(
         if (cancelled) return
         setModelList({
           providerUrl,
+          providerId,
           models: fetchedModels,
           isLoading: false,
           error: null,
@@ -91,6 +96,7 @@ export function useModels(
         if (cancelled) return
         setModelList({
           providerUrl,
+          providerId,
           models: [],
           isLoading: false,
           error: errorMessage(cause),

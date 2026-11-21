@@ -27,7 +27,16 @@ pub(super) async fn load(provider_id: &str) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub async fn set_api_key(provider_id: String, key: String) -> Result<(), String> {
+    let key = valid_key(&key)?.to_owned();
     run(move || Entry::new(SERVICE, &provider_id)?.set_password(&key)).await
+}
+
+/// Keys are stored trimmed; a blank key is rejected rather than stored.
+pub(super) fn valid_key(key: &str) -> Result<&str, String> {
+    match key.trim() {
+        "" => Err("The API key is empty.".into()),
+        key => Ok(key),
+    }
 }
 
 #[tauri::command]
@@ -41,7 +50,16 @@ pub async fn delete_api_key(provider_id: String) -> Result<(), String> {
     .await
 }
 
+/// Checks for the credential with `get_credential`, which never returns the secret.
+/// On macOS the Keychain lookup behind it may still show an access prompt.
 #[tauri::command]
 pub async fn has_api_key(provider_id: String) -> Result<bool, String> {
-    Ok(load(&provider_id).await?.is_some())
+    run(
+        move || match Entry::new(SERVICE, &provider_id)?.inner.get_credential() {
+            Ok(_) => Ok(true),
+            Err(Error::NoEntry) => Ok(false),
+            Err(error) => Err(error),
+        },
+    )
+    .await
 }

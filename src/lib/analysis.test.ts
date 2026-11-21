@@ -3,7 +3,6 @@ import {
   emptyMetrics,
   formatMetric,
   providerLocation,
-  redactPayload,
   summarizeAttempts,
   toAttemptRequest,
 } from "./analysis.ts"
@@ -153,33 +152,6 @@ assert(
   "Root bases have a valid endpoint path"
 )
 
-const withoutKey = {
-  provider: { base_url: "https://api.example.com/v1" },
-  request: { model: "test", reasoning_effort: "off" as const, messages: [] },
-}
-assert(
-  redactPayload(withoutKey) === withoutKey,
-  "Payloads without an API key are returned unchanged"
-)
-const withKey = {
-  ...withoutKey,
-  provider: { base_url: "https://api.example.com/v1", api_key: "sk-secret" },
-}
-const redacted = redactPayload(withKey)
-assert(
-  redacted.provider.api_key === "[REDACTED]" &&
-    withKey.provider.api_key === "sk-secret",
-  "API key must be redacted without mutating the source payload"
-)
-const blankKeyRedacted = redactPayload({
-  ...withoutKey,
-  provider: { base_url: "https://api.example.com/v1", api_key: "  " },
-})
-assert(
-  !("api_key" in blankKeyRedacted.provider),
-  "Blank API keys are omitted from preview"
-)
-
 const tree: MessageNode[] = [
   { id: "u1", parent_id: null, role: "user", content: "hi", created_at: 1 },
   {
@@ -193,7 +165,7 @@ const tree: MessageNode[] = [
 ]
 const systemPrompt = "be brief"
 const sent: ProviderChatRequest = {
-  provider: { base_url: "https://api.example.com/v1", api_key: "sk-secret" },
+  provider: { id: "preset-1", base_url: "https://api.example.com/v1" },
   request: {
     model: "test",
     reasoning_effort: "high",
@@ -211,8 +183,8 @@ const stored: CompletionAttempt = {
 }
 const storedJson = JSON.stringify(stored)
 assert(
-  !storedJson.includes("api_key") && !storedJson.includes("sk-secret"),
-  "Stored attempts never contain the API key"
+  !storedJson.includes("preset-1"),
+  "Stored attempts keep only the listed request fields"
 )
 assert(
   !storedJson.includes("more") && !("messages" in stored.request),

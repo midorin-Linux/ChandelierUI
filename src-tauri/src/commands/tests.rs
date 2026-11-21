@@ -1032,3 +1032,11 @@ async fn request_without_id_uses_ipc_url_and_sends_no_key() {
     let request = task.await.unwrap();
     assert!(!request.to_ascii_lowercase().contains("authorization:"));
 }
+
+#[test]
+fn api_keys_are_trimmed_and_blank_keys_rejected() {
+    use super::secrets::valid_key;
+    assert_eq!(valid_key("  sk-abc \n"), Ok("sk-abc"));
+    assert!(valid_key("   ").is_err());
+    assert!(valid_key("").is_err());
+}
