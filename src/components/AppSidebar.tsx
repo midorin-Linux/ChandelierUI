@@ -73,7 +73,10 @@ export function AppSidebar({
         <SidebarTrigger className="size-8" />
       </div>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="w-12 items-center px-0">
+        <SidebarHeader
+          data-tauri-drag-region
+          className="h-10 flex-row items-center p-0 pl-2"
+        >
           <SidebarTrigger className="size-8 shrink-0" />
         </SidebarHeader>
         <SidebarContent>

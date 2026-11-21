@@ -1,5 +1,6 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
+import { ChartColumnIcon } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Progress } from "@/src/components/ui/progress"
 import {
@@ -148,7 +149,9 @@ export function Analysis({
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline">Analysis</Button>
+        <Button variant="ghost" size="icon-sm" aria-label="Analysis">
+          <ChartColumnIcon />
+        </Button>
       </SheetTrigger>
       <SheetContent className="min-h-0 data-[side=right]:w-full! data-[side=right]:sm:max-w-3xl!">
         <SheetHeader className="shrink-0">

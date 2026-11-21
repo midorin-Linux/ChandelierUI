@@ -9,6 +9,7 @@ import {
 } from "react"
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 import { Analysis } from "@/src/components/Analysis"
+import { TitleBar } from "@/src/components/TitleBar"
 import { ChatUI } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
 import { AppSetting, type SettingsTab } from "@/src/components/AppSetting"
@@ -469,15 +470,13 @@ function Chat({
         </Dialog>
         <div className="flex h-screen min-w-0 flex-1 justify-center">
           <div className="flex min-h-0 w-full flex-col">
-            <div className="flex shrink-0 justify-end px-4 py-2 border-b">
-              <div className="flex gap-2">
-                <Analysis
-                  payload={buildPayload(messages)}
-                  attempts={session.attempts}
-                  isPending={isPending}
-                />
-              </div>
-            </div>
+            <TitleBar>
+              <Analysis
+                payload={buildPayload(messages)}
+                attempts={session.attempts}
+                isPending={isPending}
+              />
+            </TitleBar>
             <div className="relative flex min-h-0 w-full flex-1 flex-col">
               <ChatUI
                 messages={messages}
