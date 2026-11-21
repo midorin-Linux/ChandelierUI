@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { emptyData } from "@/src/lib/sessionDefaults"
-import { commit as commitNode } from "@/src/lib/sessionTree"
+import {
+  commit as commitNode,
+  createBranch,
+  selectBranchFor,
+} from "@/src/lib/sessionTree"
 import { storage } from "@/src/lib/storage"
 import { errorMessage } from "@/src/lib/utils"
 import { createWriteQueue } from "@/src/lib/writeQueue"
@@ -165,6 +169,26 @@ export function useSession(
     )
   }
 
+  /** Starts a new current branch at `head`. Saved by the `persist` that follows. */
+  function branch(head: string | null) {
+    apply(createBranch(dataRef.current, head))
+    rev.current++
+  }
+
+  /** Shows a branch containing `nodeId`; saved like `edit`, since switching alone must persist. */
+  function switchBranch(nodeId: string) {
+    const next = selectBranchFor(dataRef.current, nodeId)
+    if (next === dataRef.current) return
+    apply(next)
+    rev.current++
+    if (!idRef.current) return
+    cancelSave()
+    saveTimer.current = setTimeout(
+      () => void flush().catch(fail),
+      SAVE_DELAY_MS
+    )
+  }
+
   /**
    * Commits `node` if given, then saves before a request, creating the session on first use.
    * Records the provider the request goes to. Returns the session id.
@@ -237,6 +261,8 @@ export function useSession(
     attempts,
     nextAttemptId: () => ++attemptCounter.current,
     edit,
+    branch,
+    switchBranch,
     persist,
     commit,
     recordAttempt,

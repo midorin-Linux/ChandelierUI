@@ -341,6 +341,50 @@ function Chat({
     })
   }
 
+  /**
+   * Branches off `parentHead` and requests a reply: regenerate passes `node = null`,
+   * edit passes the new user node. Checks `canSend` first so no empty branch is left behind.
+   */
+  function fork(parentHead: string | null, node: MessageNode | null) {
+    if (inFlight.current || session.restoring) return
+    if (!canSend) {
+      setError(
+        `Cannot send: ${modelsStatus} Open Provider settings, confirm the URL with Enter or Refresh, and select a model.`
+      )
+      return
+    }
+    const headId = node?.id ?? parentHead
+    if (headId === null) return
+    // Nodes are append-only, so this is right even if `messages` is stale.
+    const history = [
+      ...pathToRoot(session.data.messages, parentHead),
+      ...(node ? [node] : []),
+    ]
+    void exclusive(async () => {
+      session.branch(parentHead)
+      const sessionId = await session.persist(node, selectedModel, activeId)
+      await requestCompletion(sessionId, headId, history, node === null)
+    })
+  }
+
+  function editMessage(original: MessageNode, content: string) {
+    if (!content.trim()) return
+    fork(original.parent_id, {
+      id: crypto.randomUUID(),
+      parent_id: original.parent_id,
+      role: "user",
+      content,
+      created_at: Date.now(),
+    })
+  }
+
+  function switchBranch(nodeId: string) {
+    if (busy) return
+    setError(null)
+    dispatchStream({ type: "reset" })
+    session.switchBranch(nodeId)
+  }
+
   function sendMessage(content: string) {
     if (inFlight.current || session.restoring || !content.trim()) return false
     const node: MessageNode = {
@@ -437,6 +481,7 @@ function Chat({
             <div className="relative flex min-h-0 w-full flex-1 flex-col">
               <ChatUI
                 messages={messages}
+                allMessages={session.data.messages}
                 partialMessage={stream.message}
                 isPending={isPending}
                 busy={busy}
@@ -446,6 +491,9 @@ function Chat({
                   const retryFrom = retryHead(messages)
                   if (retryFrom) void submit(retryFrom, null)
                 }}
+                onRegenerate={(reply) => fork(reply.parent_id, null)}
+                onEdit={editMessage}
+                onSwitch={switchBranch}
               />
               <div
                 className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
