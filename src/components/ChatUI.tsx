@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react"
-import { BrainIcon } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { BrainIcon, Check, Copy } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { MarkdownRenderer } from "@/src/components/MarkdownRenderer"
 import {
@@ -55,17 +55,19 @@ export function ChatUI({
             message.role === "assistant" ? (
               <AssistantMessage key={message.id} message={message} />
             ) : (
-              <article
-                key={message.id}
-                className="mb-4 ml-auto max-w-[85%] rounded-xl bg-muted p-3"
-              >
-                <h2 className="mb-1 text-xs font-medium text-muted-foreground">
-                  {message.role === "user" ? "You" : message.role}
-                </h2>
-                <p className="whitespace-pre-wrap wrap-break-word">
-                  {message.content}
-                </p>
-              </article>
+              <div key={message.id} className="flex flex-col gap-2 mb-4">
+                <article className="ml-auto max-w-[85%] rounded-xl bg-muted p-3">
+                  <h2 className="mb-1 text-xs font-medium text-muted-foreground">
+                    {message.role === "user" ? "You" : message.role}
+                  </h2>
+                  <p className="whitespace-pre-wrap wrap-break-word">
+                    {message.content}
+                  </p>
+                </article>
+                <div className="flex items-center justify-end">
+                  <CopyButton text={message.content} />
+                </div>
+              </div>
             )
           )
         )}
@@ -118,6 +120,33 @@ export function ChatUI({
         <div ref={messageEnd} />
       </div>
     </div>
+  )
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<number>(undefined)
+  useEffect(() => () => window.clearTimeout(timer.current), [])
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      return
+    }
+    setCopied(true)
+    window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="ml-auto"
+      aria-label={copied ? "Copied" : "Copy message"}
+      onClick={() => void copy()}
+    >
+      {copied ? <Check size={16} /> : <Copy size={16} />}
+    </Button>
   )
 }
 
