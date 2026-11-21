@@ -54,7 +54,21 @@ export function ChatUI({
   onSwitch: (nodeId: string) => void
 }) {
   const messageEnd = useRef<HTMLDivElement>(null)
+  const log = useRef<HTMLDivElement>(null)
+  const scrollTarget = useRef<string | null>(null)
+  const select = (id: string) => {
+    scrollTarget.current = id
+    onSwitch(id)
+  }
   useEffect(() => {
+    const id = scrollTarget.current
+    scrollTarget.current = null
+    const target =
+      id && log.current?.querySelector(`[data-message-id="${CSS.escape(id)}"]`)
+    if (target) {
+      target.scrollIntoView({ block: "start" })
+      return
+    }
     messageEnd.current?.scrollIntoView({ block: "nearest" })
   }, [messages, partialMessage, isPending, error])
   const canRetry = canSend && awaitsReply(messages, busy)
@@ -66,11 +80,12 @@ export function ChatUI({
       nodes={replies}
       currentId={null}
       disabled={busy}
-      onSelect={onSwitch}
+      onSelect={select}
     />
   )
   return (
     <div
+      ref={log}
       className="min-h-0 w-full flex-1 overflow-y-auto text-[0.9rem] scroll-pb-[var(--composer-height,0px)]"
       role="log"
       aria-label="Conversation"
@@ -88,13 +103,14 @@ export function ChatUI({
                 nodes={siblings(allMessages, message)}
                 currentId={message.id}
                 disabled={busy}
-                onSelect={onSwitch}
+                onSelect={select}
               />
             )
             return message.role === "assistant" ? (
               <AssistantMessage
                 key={message.id}
                 message={message}
+                messageId={message.id}
                 actions={
                   <>
                     {nav}
@@ -249,7 +265,10 @@ function UserMessage({
     setDraft(null)
   }
   return (
-    <div className="mb-4 flex flex-col gap-2">
+    <div
+      data-message-id={message.id}
+      className="mb-4 flex scroll-mt-4 flex-col gap-2"
+    >
       {draft === null ? (
         <article className="ml-auto max-w-[85%] rounded-xl bg-muted p-3">
           <h2 className="mb-1 text-xs font-medium text-muted-foreground">
@@ -332,8 +351,10 @@ function AssistantMessage({
   isPending = false,
   failed = false,
   actions,
+  messageId,
 }: {
   message: ChatMessage
+  messageId?: string
   isPending?: boolean
   failed?: boolean
   actions?: ReactNode
@@ -343,7 +364,8 @@ function AssistantMessage({
       aria-label={
         failed ? "Incomplete assistant response" : "Assistant response"
       }
-      className="mb-4 flex flex-col gap-3"
+      data-message-id={messageId}
+      className="mb-4 flex scroll-mt-4 flex-col gap-3"
     >
       {message.reasoning && (
         <Trace>
