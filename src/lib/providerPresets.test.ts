@@ -3,6 +3,7 @@ import {
   deletePreset,
   migrate,
   remove,
+  sessionProvider,
   update,
 } from "./providerPresets.ts"
 
@@ -71,4 +72,24 @@ const failing = await deletePreset([a, b], "a", "a", async () => {
 assert(
   failing === "keyring locked",
   "A failed key deletion rejects, so the caller keeps the preset"
+)
+
+const own = sessionProvider([a, b], "b", "a")
+assert(
+  own.id === "b" && !own.missing,
+  "A session opens on its own provider when it still exists"
+)
+const deletedProvider = sessionProvider([a], "gone", "a")
+assert(
+  deletedProvider.id === "a" && deletedProvider.missing,
+  "A deleted provider falls back to the default and is flagged"
+)
+const legacySession = sessionProvider([a], null, "a")
+assert(
+  legacySession.id === "a" && !legacySession.missing,
+  "Sessions saved before presets use the default without a notice"
+)
+assert(
+  sessionProvider([a], undefined, "stale").id === null,
+  "A default that no longer exists selects nothing"
 )

@@ -165,9 +165,20 @@ export function useSession(
     )
   }
 
-  /** Commits `node` if given, then saves before a request, creating the session on first use. Returns its id. */
-  async function persist(node: MessageNode | null, model: string) {
-    const base = { ...dataRef.current, model: model || dataRef.current.model }
+  /**
+   * Commits `node` if given, then saves before a request, creating the session on first use.
+   * Records the provider the request goes to. Returns the session id.
+   */
+  async function persist(
+    node: MessageNode | null,
+    model: string,
+    providerId: string | null
+  ) {
+    const base = {
+      ...dataRef.current,
+      model: model || dataRef.current.model,
+      provider_id: providerId,
+    }
     const next = node ? commitNode(base, node) : base
     apply(next)
     rev.current++ // dirty until saved, so leaving the session retries a failed save

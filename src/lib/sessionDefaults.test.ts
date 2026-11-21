@@ -5,6 +5,7 @@ function assert(condition: boolean, message: string): void {
 }
 
 const defaults = {
+  providerId: "preset-1",
   effort: "high",
   model: "",
   systemPrompt: "Be brief.",
@@ -31,4 +32,8 @@ assert(
     data.branches.main === null &&
     data.current_branch === "main",
   "A new session starts empty on main"
+)
+assert(
+  data.provider_id === "preset-1",
+  "A new session starts on the default provider (provider.active_id)"
 )

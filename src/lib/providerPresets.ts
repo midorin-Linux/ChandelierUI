@@ -60,3 +60,21 @@ export async function deletePreset(
   await deleteKey(id)
   return remove(presets, activeId, id)
 }
+
+/**
+ * The preset a session talks to: its own when it still exists, otherwise
+ * `fallbackId` (the new-chat default). `missing` is true only when the session
+ * named a preset that has since been deleted, not for sessions saved before presets.
+ */
+export function sessionProvider(
+  presets: ProviderPreset[],
+  providerId: string | null | undefined,
+  fallbackId: string | null
+): { id: string | null; missing: boolean } {
+  if (providerId && presets.some((p) => p.id === providerId))
+    return { id: providerId, missing: false }
+  return {
+    id: presets.some((p) => p.id === fallbackId) ? fallbackId : null,
+    missing: Boolean(providerId),
+  }
+}

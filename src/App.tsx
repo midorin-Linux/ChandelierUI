@@ -27,7 +27,13 @@ import {
 } from "@/src/hooks/useSettings"
 import { emptyMetrics, toAttemptRequest } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
-import { add, deletePreset, migrate, update } from "@/src/lib/providerPresets"
+import {
+  add,
+  deletePreset,
+  migrate,
+  sessionProvider,
+  update,
+} from "@/src/lib/providerPresets"
 import { retryHead } from "@/src/lib/retry"
 import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
@@ -69,12 +75,11 @@ function Chat({
   const [presets, setPresets] = useState(() =>
     migrate(settings[SETTING_PRESETS], settings[SETTING_BASE_URL])
   )
-  const [activeId, setActiveId] = useState<string | null>(() => {
-    const saved = settings[SETTING_ACTIVE_ID]
-    return presets.find((p) => p.id === saved)?.id ?? presets[0]?.id ?? null
-  })
-  const providerUrl = presets.find((p) => p.id === activeId)?.baseUrl ?? ""
   const [defaults, setDefaultsState] = useState<SessionDefaults>(() => ({
+    providerId:
+      presets.find((p) => p.id === settings[SETTING_ACTIVE_ID])?.id ??
+      presets[0]?.id ??
+      null,
     effort:
       efforts.find((e) => e === settings[SETTING_DEFAULT_EFFORT]) ?? "off",
     model:
@@ -88,7 +93,6 @@ function Chat({
   }))
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
-  const [providerUrlInput, setProviderUrlInput] = useState(providerUrl)
   const [error, setError] = useState<string | null>(null)
   const session = useSession(
     setError,
@@ -99,6 +103,19 @@ function Chat({
     typeof lastSession === "string" ? lastSession : null,
     defaults
   )
+  // The session's own preset, else the new-chat default (`provider.active_id`).
+  const { id: activeId, missing: providerMissing } = sessionProvider(
+    presets,
+    session.data.provider_id,
+    defaults.providerId
+  )
+  const providerUrl = presets.find((p) => p.id === activeId)?.baseUrl ?? ""
+  // The URL being typed belongs to one preset, so switching presets drops it.
+  const [urlDraft, setUrlDraft] = useState({ id: activeId, value: providerUrl })
+  const providerUrlInput =
+    urlDraft.id === activeId ? urlDraft.value : providerUrl
+  const setProviderUrlInput = (value: string) =>
+    setUrlDraft({ id: activeId, value })
   const {
     models,
     modelsLoading,
@@ -137,7 +154,7 @@ function Chat({
   useEffect(() => {
     if (Array.isArray(settings[SETTING_PRESETS]) || presets.length === 0) return
     setSetting(SETTING_PRESETS, presets)
-    setSetting(SETTING_ACTIVE_ID, activeId)
+    setSetting(SETTING_ACTIVE_ID, defaults.providerId)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function savePresets(next: ProviderPreset[], debounced = false) {
@@ -146,10 +163,10 @@ function Chat({
     else setSetting(SETTING_PRESETS, next)
   }
 
-  function activate(list: ProviderPreset[], id: string | null) {
-    setActiveId(id)
-    setSetting(SETTING_ACTIVE_ID, id)
-    setProviderUrlInput(list.find((p) => p.id === id)?.baseUrl ?? "")
+  /** An explicit choice: saved to the session, and the default for new chats. */
+  function selectProvider(id: string | null) {
+    session.edit({ provider_id: id })
+    setDefaults({ ...defaults, providerId: id })
   }
 
   // Only called when the URL is confirmed (Enter / Fetch).
@@ -165,7 +182,7 @@ function Chat({
     }
     const next = add(presets, preset)
     savePresets(next)
-    activate(next, preset.id)
+    selectProvider(preset.id)
   }
 
   /** Rejects (keeping the preset) when the key cannot be deleted. */
@@ -178,11 +195,13 @@ function Chat({
         : Promise.resolve()
     )
     savePresets(next.presets)
-    activate(next.presets, next.activeId)
+    selectProvider(next.activeId)
   }
 
   function setDefaults(next: SessionDefaults) {
     setDefaultsState(next)
+    if (next.providerId !== defaults.providerId)
+      setSetting(SETTING_ACTIVE_ID, next.providerId)
     if (next.effort !== defaults.effort)
       setSetting(SETTING_DEFAULT_EFFORT, next.effort)
     if (next.model !== defaults.model)
@@ -309,7 +328,7 @@ function Chat({
     const history = node ? [...messages, node] : messages
     return exclusive(async () => {
       // Retry saves too: an earlier save may have failed, or the model may have been unset.
-      const sessionId = await session.persist(node, selectedModel)
+      const sessionId = await session.persist(node, selectedModel, activeId)
       if (!canSend) {
         if (!retry) {
           setError(
@@ -387,7 +406,7 @@ function Chat({
             provider={{
               presets,
               activeId,
-              onSelectPreset: (id) => activate(presets, id),
+              onSelectPreset: selectProvider,
               onAddPreset: addPreset,
               onRemovePreset: removePreset,
               onRenamePreset: (name) =>
@@ -442,6 +461,15 @@ function Chat({
                   return () => observer.disconnect()
                 }}
               >
+                {providerMissing && (
+                  <p
+                    role="status"
+                    className="px-3 pb-1 text-xs text-muted-foreground"
+                  >
+                    This session&apos;s provider has been deleted. Using the
+                    current provider instead.
+                  </p>
+                )}
                 <MessageBox
                   models={models}
                   modelsLoading={modelsLoading}

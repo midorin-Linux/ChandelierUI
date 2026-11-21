@@ -3,6 +3,8 @@ export type Effort = (typeof efforts)[number]
 
 /** Applied to new sessions; an empty model keeps the current one. */
 export interface SessionDefaults {
+  /** `provider.active_id`: the preset a new chat starts with. */
+  providerId: string | null
   effort: Effort
   model: string
   systemPrompt: string

@@ -15,6 +15,7 @@ export interface SessionData {
   model: string
   reasoning_effort: Effort
   system_prompt: string
+  provider_id?: string | null // preset id; missing in sessions saved before presets
   messages: MessageNode[] // append-only, never mutated or removed
   branches: Record<string, string | null> // branch name -> head message id
   current_branch: string // "main" for new sessions

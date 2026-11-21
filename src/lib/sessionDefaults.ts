@@ -10,6 +10,7 @@ export function emptyData(
     model: defaults.model || model,
     reasoning_effort: defaults.effort,
     system_prompt: defaults.systemPrompt,
+    provider_id: defaults.providerId,
     messages: [],
     branches: { main: null },
     current_branch: "main",
