@@ -1,5 +1,6 @@
 mod client;
 mod metrics;
+pub mod secrets;
 pub mod sessions;
 pub mod settings;
 mod sse;
@@ -22,12 +23,20 @@ impl Drop for CancelGuard<'_> {
     }
 }
 
+async fn load_key(provider: &mut Provider) -> Result<(), String> {
+    if let Some(id) = &provider.id {
+        provider.api_key = secrets::load(id).await?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn chat_completion(
     client: State<'_, HttpClient>,
-    payload: ChatPayload,
+    mut payload: ChatPayload,
     on_event: Channel<CompletionDelta>,
 ) -> Result<MeasuredCompletion, String> {
+    load_key(&mut payload.provider).await?;
     let (id, rx) = client.register_cancel();
     let _guard = CancelGuard(client.inner(), id);
     let cancel = async move {
@@ -53,7 +62,8 @@ pub fn cancel_chat(client: State<'_, HttpClient>) {
 #[tauri::command]
 pub async fn list_models(
     client: State<'_, HttpClient>,
-    provider: Provider,
+    mut provider: Provider,
 ) -> Result<Vec<Model>, String> {
+    load_key(&mut provider).await?;
     fetch_models(client.inner(), provider).await
 }

@@ -10,8 +10,12 @@ pub struct CompletionDelta {
 
 #[derive(Deserialize)]
 pub struct Provider {
-    pub(super) base_url: String,
+    /// Keyring account of this provider's API key.
     #[serde(default)]
+    pub(super) id: Option<String>,
+    pub(super) base_url: String,
+    /// Loaded from the keyring in the backend; never accepted over IPC.
+    #[serde(skip)]
     pub(super) api_key: Option<String>,
 }
 

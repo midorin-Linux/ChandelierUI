@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { errorMessage } from "@/src/lib/utils"
 import type { ApiModel } from "@/src/types/chat"
@@ -9,11 +9,10 @@ import type { ApiModel } from "@/src/types/chat"
  */
 export function useModels(
   providerUrl: string,
-  apiKey: string,
+  providerId: string | null,
   preferredModel: string,
   onSelect: (model: string) => void
 ) {
-  const apiKeyRef = useRef(apiKey)
   const [modelList, setModelList] = useState<{
     providerUrl: string
     models: ApiModel[]
@@ -61,10 +60,6 @@ export function useModels(
   }
 
   useEffect(() => {
-    apiKeyRef.current = apiKey
-  }, [apiKey])
-
-  useEffect(() => {
     let cancelled = false
     if (!providerUrl.trim()) return
 
@@ -75,11 +70,10 @@ export function useModels(
             "Loading models requires the Tauri desktop app. Open the desktop app instead of the browser preview."
           )
         }
-        const trimmedKey = apiKeyRef.current.trim()
         const fetchedModels = await invoke<ApiModel[]>("list_models", {
           provider: {
             base_url: providerUrl,
-            ...(trimmedKey ? { api_key: trimmedKey } : {}),
+            ...(providerId ? { id: providerId } : {}),
           },
         })
         if (cancelled) return
@@ -103,7 +97,7 @@ export function useModels(
     return () => {
       cancelled = true
     }
-  }, [providerUrl, modelsRefresh])
+  }, [providerUrl, providerId, modelsRefresh])
 
   return {
     models,

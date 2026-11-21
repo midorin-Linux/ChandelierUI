@@ -5,6 +5,8 @@ import { storage } from "@/src/lib/storage"
 import { createWriteQueue } from "@/src/lib/writeQueue"
 
 export const SETTING_BASE_URL = "provider.base_url"
+export const SETTING_PRESETS = "provider.presets"
+export const SETTING_ACTIVE_ID = "provider.active_id"
 export const SETTING_LAST_SESSION = "ui.last_session_id"
 export const SETTING_DEFAULT_EFFORT = "session.default_effort"
 export const SETTING_DEFAULT_MODEL = "session.default_model"

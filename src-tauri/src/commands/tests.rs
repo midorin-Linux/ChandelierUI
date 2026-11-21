@@ -621,6 +621,7 @@ async fn ignores_invalid_optional_model_context_lengths() {
         let models = fetch_models(
             &http_client().unwrap(),
             Provider {
+                id: None,
                 base_url,
                 api_key: None,
             },
@@ -642,6 +643,7 @@ async fn gets_provider_models() {
     let models = fetch_models(
         &http_client().unwrap(),
         Provider {
+            id: None,
             base_url,
             api_key: None,
         },
@@ -673,6 +675,7 @@ async fn accepts_empty_model_list() {
     let models = fetch_models(
         &http_client().unwrap(),
         Provider {
+            id: None,
             base_url,
             api_key: None,
         },
@@ -712,6 +715,7 @@ async fn rejects_model_errors_and_invalid_ids() {
         let error = fetch_models(
             &client,
             Provider {
+                id: None,
                 base_url,
                 api_key: None,
             },
@@ -782,6 +786,7 @@ async fn sends_bearer_auth_only_when_api_key_is_nonblank() {
     fetch_models(
         &client,
         Provider {
+            id: None,
             base_url,
             api_key: Some("  sk-models-key  ".into()),
         },
@@ -810,6 +815,7 @@ async fn sends_bearer_auth_only_when_api_key_is_nonblank() {
     fetch_models(
         &client,
         Provider {
+            id: None,
             base_url,
             api_key: Some("   ".into()),
         },
@@ -941,4 +947,12 @@ async fn cancels_streaming_completion_and_preserves_partial_text() {
     assert!(!result.metrics.timed_out);
     assert_eq!(result.message.unwrap().content, "partial");
     task.await.unwrap();
+}
+
+#[test]
+fn provider_never_deserializes_api_key_from_ipc() {
+    let provider: Provider =
+        serde_json::from_str(r#"{"id":"p1","base_url":"http://x","api_key":"sk-leak"}"#).unwrap();
+    assert_eq!(provider.api_key, None);
+    assert_eq!(provider.id.as_deref(), Some("p1"));
 }

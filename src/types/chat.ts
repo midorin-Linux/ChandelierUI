@@ -32,6 +32,13 @@ export interface ChatCompletionRequest {
 }
 
 export interface ProviderChatRequest {
-  provider: { base_url: string; api_key?: string }
+  // The key itself never leaves the backend; `api_key` is only ever redacted.
+  provider: { id?: string; base_url: string; api_key?: string }
   request: ChatCompletionRequest
+}
+
+export interface ProviderPreset {
+  id: string
+  name: string
+  baseUrl: string
 }
