@@ -58,14 +58,16 @@ export function useSettings() {
     [cancelPending, write]
   )
 
-  /** Writes every pending debounced value now. */
+  /**
+   * Writes every pending debounced value now and resolves once every write queued
+   * so far is stored, so the backend reads what the UI shows.
+   */
   const flushSettings = useCallback(() => {
     const entries = [...pending.current]
     entries.forEach(([key]) => cancelPending(key))
-    return Promise.all(
-      entries.map(([key, { value }]) => write(key, value))
-    ).then(() => undefined)
-  }, [cancelPending, write])
+    entries.forEach(([key, { value }]) => void write(key, value))
+    return enqueue(() => Promise.resolve())
+  }, [cancelPending, write, enqueue])
 
   const setSettingDebounced = useCallback(
     (key: string, value: unknown) => {

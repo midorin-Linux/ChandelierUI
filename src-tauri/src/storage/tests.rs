@@ -11,7 +11,7 @@ use crate::types::ReasoningEffort;
 
 /// `sqlite::memory:` is a separate database per connection, so pin one connection
 /// and never let the pool reap it.
-async fn memory_pool() -> SqlitePool {
+pub(crate) async fn memory_pool() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .idle_timeout(None::<Duration>)

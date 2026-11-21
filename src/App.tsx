@@ -106,8 +106,12 @@ function Chat({
     modelsStatus,
     selectModel,
     refreshModels,
-  } = useModels(providerUrl, activeId, session.data.model, (model) =>
-    session.edit({ model })
+  } = useModels(
+    providerUrl,
+    activeId,
+    session.data.model,
+    (model) => session.edit({ model }),
+    flushSettings
   )
   const selectedEffort = session.data.reasoning_effort
   const systemPrompt = session.data.system_prompt
@@ -236,6 +240,7 @@ function Chat({
       const onEvent = new Channel<CompletionDelta>((delta) => {
         dispatchStream({ type: "delta", attemptId: id, delta })
       })
+      await flushSettings() // the backend resolves the preset from stored settings
       result = await invoke<MeasuredCompletion>("chat_completion", {
         payload: requestPayload,
         onEvent,

@@ -11,7 +11,9 @@ export function useModels(
   providerUrl: string,
   providerId: string | null,
   preferredModel: string,
-  onSelect: (model: string) => void
+  onSelect: (model: string) => void,
+  /** Resolves once saved presets are stored; the backend resolves `providerId` from them. */
+  settingsSaved: () => Promise<void>
 ) {
   const [modelList, setModelList] = useState<{
     providerUrl: string
@@ -70,6 +72,8 @@ export function useModels(
             "Loading models requires the Tauri desktop app. Open the desktop app instead of the browser preview."
           )
         }
+        await settingsSaved()
+        if (cancelled) return
         const fetchedModels = await invoke<ApiModel[]>("list_models", {
           provider: {
             base_url: providerUrl,
@@ -97,7 +101,7 @@ export function useModels(
     return () => {
       cancelled = true
     }
-  }, [providerUrl, providerId, modelsRefresh])
+  }, [providerUrl, providerId, modelsRefresh, settingsSaved])
 
   return {
     models,

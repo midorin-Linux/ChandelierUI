@@ -254,7 +254,10 @@ pub(super) async fn complete_cancellable(
     cancel: impl Future<Output = ()>,
     mut on_event: impl FnMut(CompletionDelta) -> Result<(), String>,
 ) -> MeasuredCompletion {
-    let url = match endpoint(&payload.provider.base_url, "chat/completions") {
+    let url = match endpoint(
+        payload.provider.base_url.as_deref().unwrap_or(""),
+        "chat/completions",
+    ) {
         Ok(url) => url,
         Err(error) => {
             return MeasuredCompletion {
@@ -437,7 +440,7 @@ pub(super) async fn fetch_models(
     client: &HttpClient,
     provider: Provider,
 ) -> Result<Vec<Model>, String> {
-    let url = endpoint(&provider.base_url, "models")?;
+    let url = endpoint(provider.base_url.as_deref().unwrap_or(""), "models")?;
     let response = with_auth(client.models.get(url), provider.api_key.as_deref())
         .send()
         .await

@@ -10,6 +10,7 @@ use super::{
         complete, complete_cancellable, endpoint, fetch_models, http_client,
         http_client_with_timeouts,
     },
+    list_models_with,
     metrics::{ChunkIntervals, CompletionMetrics},
     sse::{MAX_SSE_EVENT_BYTES, SseDecoder},
     stream::CompletionStream,
@@ -622,7 +623,7 @@ async fn ignores_invalid_optional_model_context_lengths() {
             &http_client().unwrap(),
             Provider {
                 id: None,
-                base_url,
+                base_url: Some(base_url),
                 api_key: None,
             },
         )
@@ -644,7 +645,7 @@ async fn gets_provider_models() {
         &http_client().unwrap(),
         Provider {
             id: None,
-            base_url,
+            base_url: Some(base_url),
             api_key: None,
         },
     )
@@ -676,7 +677,7 @@ async fn accepts_empty_model_list() {
         &http_client().unwrap(),
         Provider {
             id: None,
-            base_url,
+            base_url: Some(base_url),
             api_key: None,
         },
     )
@@ -716,7 +717,7 @@ async fn rejects_model_errors_and_invalid_ids() {
             &client,
             Provider {
                 id: None,
-                base_url,
+                base_url: Some(base_url),
                 api_key: None,
             },
         )
@@ -787,7 +788,7 @@ async fn sends_bearer_auth_only_when_api_key_is_nonblank() {
         &client,
         Provider {
             id: None,
-            base_url,
+            base_url: Some(base_url),
             api_key: Some("  sk-models-key  ".into()),
         },
     )
@@ -816,7 +817,7 @@ async fn sends_bearer_auth_only_when_api_key_is_nonblank() {
         &client,
         Provider {
             id: None,
-            base_url,
+            base_url: Some(base_url),
             api_key: Some("   ".into()),
         },
     )
@@ -955,4 +956,79 @@ fn provider_never_deserializes_api_key_from_ipc() {
         serde_json::from_str(r#"{"id":"p1","base_url":"http://x","api_key":"sk-leak"}"#).unwrap();
     assert_eq!(provider.api_key, None);
     assert_eq!(provider.id.as_deref(), Some("p1"));
+}
+
+async fn presets_pool(base_url: &str) -> sqlx::SqlitePool {
+    let pool = crate::storage::tests::memory_pool().await;
+    crate::storage::set_setting(
+        &pool,
+        "provider.presets",
+        &serde_json::json!([{"id": "p1", "name": "Local", "baseUrl": base_url}]),
+    )
+    .await
+    .unwrap();
+    pool
+}
+
+async fn no_key_read(_: &str) -> Result<Option<String>, String> {
+    panic!("the keyring must not be read")
+}
+
+#[tokio::test]
+async fn preset_id_ignores_ipc_base_url_and_sends_key_to_preset_url() {
+    let (preset_url, task) = server("200 OK", r#"{"data":[]}"#).await;
+    let pool = presets_pool(&preset_url).await;
+    let provider: Provider = serde_json::from_value(
+        serde_json::json!({"id": "p1", "base_url": "http://127.0.0.1:9/attacker"}),
+    )
+    .unwrap();
+    list_models_with(
+        &http_client().unwrap(),
+        &pool,
+        provider,
+        async |id: &str| {
+            assert_eq!(id, "p1");
+            Ok(Some("sk-preset".into()))
+        },
+    )
+    .await
+    .unwrap();
+    let request = task.await.unwrap();
+    assert!(
+        request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer sk-preset\r\n")
+    );
+}
+
+#[tokio::test]
+async fn unknown_preset_id_fails_without_network_or_key_access() {
+    let (base_url, task) = server("200 OK", r#"{"data":[]}"#).await;
+    let pool = presets_pool("http://127.0.0.1:9/v1").await;
+    let provider: Provider =
+        serde_json::from_value(serde_json::json!({"id": "missing", "base_url": base_url})).unwrap();
+    let error = list_models_with(&http_client().unwrap(), &pool, provider, no_key_read)
+        .await
+        .unwrap_err();
+    assert!(error.contains("Unknown provider preset"), "{error}");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), task)
+            .await
+            .is_err(),
+        "no request may reach the network"
+    );
+}
+
+#[tokio::test]
+async fn request_without_id_uses_ipc_url_and_sends_no_key() {
+    let (base_url, task) = server("200 OK", r#"{"data":[]}"#).await;
+    let pool = presets_pool("http://127.0.0.1:9/v1").await;
+    let provider: Provider =
+        serde_json::from_value(serde_json::json!({"base_url": base_url, "api_key": "sk-leak"}))
+            .unwrap();
+    list_models_with(&http_client().unwrap(), &pool, provider, no_key_read)
+        .await
+        .unwrap();
+    let request = task.await.unwrap();
+    assert!(!request.to_ascii_lowercase().contains("authorization:"));
 }
