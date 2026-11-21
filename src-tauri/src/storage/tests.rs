@@ -11,7 +11,7 @@ use crate::types::ReasoningEffort;
 
 /// `sqlite::memory:` is a separate database per connection, so pin one connection
 /// and never let the pool reap it.
-async fn memory_pool() -> SqlitePool {
+pub(crate) async fn memory_pool() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .idle_timeout(None::<Duration>)
@@ -54,6 +54,7 @@ fn data(text: &str) -> SessionData {
         model: "m".into(),
         reasoning_effort: ReasoningEffort::Medium,
         system_prompt: String::new(),
+        provider_id: None,
         messages: vec![node("u1", None, NodeRole::User, text)],
         branches: BTreeMap::from([("main".into(), Some("u1".into()))]),
         current_branch: "main".into(),
@@ -257,4 +258,41 @@ async fn attempt_versions_other_than_1_are_rejected() {
     attempts::append(&pool, &id, &attempt(1)).await.unwrap();
     let loaded = sessions::load(&pool, &id).await.unwrap();
     assert_eq!(loaded.attempts, vec![attempt(1)]);
+}
+
+#[tokio::test]
+async fn provider_id_roundtrips_with_and_without_a_value() {
+    let pool = memory_pool().await;
+    for provider_id in [Some("preset-1".to_string()), None] {
+        let session = SessionData {
+            provider_id: provider_id.clone(),
+            ..data("hi")
+        };
+        let id = sessions::create(&pool, &session).await.unwrap().id;
+        assert_eq!(sessions::load(&pool, &id).await.unwrap().data, session);
+        let changed = SessionData {
+            provider_id: Some("preset-2".into()),
+            ..session
+        };
+        sessions::save(&pool, &id, None, &changed).await.unwrap();
+        assert_eq!(
+            sessions::load(&pool, &id).await.unwrap().data.provider_id,
+            Some("preset-2".into())
+        );
+    }
+}
+
+#[tokio::test]
+async fn session_saved_before_provider_id_still_loads() {
+    let pool = memory_pool().await;
+    sqlx::query(
+        "INSERT INTO sessions (id, created_at, updated_at, schema_version, data) VALUES ('legacy', 1, 1, 2, ?1)",
+    )
+    .bind(r#"{"model":"m","reasoning_effort":"medium","system_prompt":"","messages":[],"branches":{"main":null},"current_branch":"main"}"#)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let loaded = sessions::load(&pool, "legacy").await.unwrap();
+    assert_eq!(loaded.data.provider_id, None);
+    assert_eq!(loaded.data.model, "m");
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { invoke, isTauri } from "@tauri-apps/api/core"
 import { errorMessage } from "@/src/lib/utils"
 import type { ApiModel } from "@/src/types/chat"
@@ -9,33 +9,38 @@ import type { ApiModel } from "@/src/types/chat"
  */
 export function useModels(
   providerUrl: string,
-  apiKey: string,
+  providerId: string | null,
   preferredModel: string,
-  onSelect: (model: string) => void
+  onSelect: (model: string) => void,
+  /** Resolves once saved presets are stored; the backend resolves `providerId` from them. */
+  settingsSaved: () => Promise<void>
 ) {
-  const apiKeyRef = useRef(apiKey)
   const [modelList, setModelList] = useState<{
     providerUrl: string
+    providerId: string | null
     models: ApiModel[]
     isLoading: boolean
     error: string | null
   }>({
     providerUrl: "",
+    providerId: null,
     models: [],
     isLoading: false,
     error: null,
   })
   const [modelsRefresh, setModelsRefresh] = useState(0)
-  const models = modelList.providerUrl === providerUrl ? modelList.models : []
-  const modelsLoading =
-    modelList.providerUrl === providerUrl
-      ? modelList.isLoading
-      : Boolean(providerUrl.trim())
+  // Two presets may share a URL but not a key, so the list belongs to the pair.
+  const current =
+    modelList.providerUrl === providerUrl && modelList.providerId === providerId
+  const models = current ? modelList.models : []
+  const modelsLoading = current
+    ? modelList.isLoading
+    : Boolean(providerUrl.trim())
   const selectedModel = models.some((model) => model.id === preferredModel)
     ? preferredModel
     : (models[0]?.id ?? "")
   const modelsStatus =
-    modelList.providerUrl === providerUrl && modelList.error
+    current && modelList.error
       ? modelList.error
       : modelsLoading
         ? "Loading models…"
@@ -61,10 +66,6 @@ export function useModels(
   }
 
   useEffect(() => {
-    apiKeyRef.current = apiKey
-  }, [apiKey])
-
-  useEffect(() => {
     let cancelled = false
     if (!providerUrl.trim()) return
 
@@ -75,16 +76,18 @@ export function useModels(
             "Loading models requires the Tauri desktop app. Open the desktop app instead of the browser preview."
           )
         }
-        const trimmedKey = apiKeyRef.current.trim()
+        await settingsSaved()
+        if (cancelled) return
         const fetchedModels = await invoke<ApiModel[]>("list_models", {
           provider: {
             base_url: providerUrl,
-            ...(trimmedKey ? { api_key: trimmedKey } : {}),
+            ...(providerId ? { id: providerId } : {}),
           },
         })
         if (cancelled) return
         setModelList({
           providerUrl,
+          providerId,
           models: fetchedModels,
           isLoading: false,
           error: null,
@@ -93,6 +96,7 @@ export function useModels(
         if (cancelled) return
         setModelList({
           providerUrl,
+          providerId,
           models: [],
           isLoading: false,
           error: errorMessage(cause),
@@ -103,7 +107,7 @@ export function useModels(
     return () => {
       cancelled = true
     }
-  }, [providerUrl, modelsRefresh])
+  }, [providerUrl, providerId, modelsRefresh, settingsSaved])
 
   return {
     models,

@@ -33,6 +33,10 @@ pub struct SessionData {
     pub model: String,
     pub reasoning_effort: ReasoningEffort,
     pub system_prompt: String,
+    /// Provider preset the session talks to. Absent in sessions saved before
+    /// presets existed, so it defaults to `None` without a schema bump.
+    #[serde(default)]
+    pub provider_id: Option<String>,
     /// Append-only; a parent always comes before its children.
     pub messages: Vec<MessageNode>,
     /// Branch name -> head message id.

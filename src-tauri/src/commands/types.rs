@@ -10,8 +10,15 @@ pub struct CompletionDelta {
 
 #[derive(Deserialize)]
 pub struct Provider {
-    pub(super) base_url: String,
+    /// Saved preset id. When set, the backend takes the base URL from the preset
+    /// and the API key from the keyring (see `providers::resolve`).
     #[serde(default)]
+    pub(super) id: Option<String>,
+    /// Used only when `id` is absent.
+    #[serde(default)]
+    pub(super) base_url: Option<String>,
+    /// Loaded from the keyring in the backend; never accepted over IPC.
+    #[serde(skip)]
     pub(super) api_key: Option<String>,
 }
 

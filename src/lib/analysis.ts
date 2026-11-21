@@ -5,20 +5,7 @@ import type {
 } from "../types/analysis"
 import type { ProviderChatRequest } from "../types/chat"
 
-export function redactPayload(
-  payload: ProviderChatRequest
-): ProviderChatRequest {
-  const { api_key, ...provider } = payload.provider
-  if (!api_key?.trim()) {
-    return api_key === undefined ? payload : { ...payload, provider }
-  }
-  return {
-    ...payload,
-    provider: { ...provider, api_key: "[REDACTED]" },
-  }
-}
-
-/** Field by field, so the API key and message contents can never be stored. */
+/** Field by field, so message contents and anything secret can never be stored. */
 export function toAttemptRequest(
   payload: ProviderChatRequest,
   systemPrompt: string,

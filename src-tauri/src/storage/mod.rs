@@ -2,7 +2,7 @@ pub mod attempts;
 pub mod sessions;
 mod settings;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 mod types;
 
 use std::{

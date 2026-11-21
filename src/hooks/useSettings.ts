@@ -5,6 +5,8 @@ import { storage } from "@/src/lib/storage"
 import { createWriteQueue } from "@/src/lib/writeQueue"
 
 export const SETTING_BASE_URL = "provider.base_url"
+export const SETTING_PRESETS = "provider.presets"
+export const SETTING_ACTIVE_ID = "provider.active_id"
 export const SETTING_LAST_SESSION = "ui.last_session_id"
 export const SETTING_DEFAULT_EFFORT = "session.default_effort"
 export const SETTING_DEFAULT_MODEL = "session.default_model"
@@ -56,14 +58,16 @@ export function useSettings() {
     [cancelPending, write]
   )
 
-  /** Writes every pending debounced value now. */
+  /**
+   * Writes every pending debounced value now and resolves once every write queued
+   * so far is stored, so the backend reads what the UI shows.
+   */
   const flushSettings = useCallback(() => {
     const entries = [...pending.current]
     entries.forEach(([key]) => cancelPending(key))
-    return Promise.all(
-      entries.map(([key, { value }]) => write(key, value))
-    ).then(() => undefined)
-  }, [cancelPending, write])
+    entries.forEach(([key, { value }]) => void write(key, value))
+    return enqueue(() => Promise.resolve())
+  }, [cancelPending, write, enqueue])
 
   const setSettingDebounced = useCallback(
     (key: string, value: unknown) => {

@@ -20,7 +20,6 @@ import {
   formatMetric,
   isFailed,
   providerLocation,
-  redactPayload,
   summarizeAttempts,
 } from "@/src/lib/analysis"
 import type { CompletionAttempt, CompletionMetrics } from "@/src/types/analysis"
@@ -458,7 +457,7 @@ export function Analysis({
                   attempt)
                 </summary>
                 <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs">
-                  {JSON.stringify(redactPayload(payload), null, 2)}
+                  {JSON.stringify(payload, null, 2)}
                 </pre>
               </details>
             </TabsContent>

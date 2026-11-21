@@ -3,6 +3,8 @@ export type Effort = (typeof efforts)[number]
 
 /** Applied to new sessions; an empty model keeps the current one. */
 export interface SessionDefaults {
+  /** `provider.active_id`: the preset a new chat starts with. */
+  providerId: string | null
   effort: Effort
   model: string
   systemPrompt: string
@@ -32,6 +34,13 @@ export interface ChatCompletionRequest {
 }
 
 export interface ProviderChatRequest {
-  provider: { base_url: string; api_key?: string }
+  // The API key never leaves the backend; it is loaded from the keyring by `id`.
+  provider: { id?: string; base_url: string }
   request: ChatCompletionRequest
+}
+
+export interface ProviderPreset {
+  id: string
+  name: string
+  baseUrl: string
 }
