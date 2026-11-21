@@ -1,4 +1,10 @@
-import { add, migrate, remove, update } from "./providerPresets.ts"
+import {
+  add,
+  deletePreset,
+  migrate,
+  remove,
+  update,
+} from "./providerPresets.ts"
 
 function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message)
@@ -43,4 +49,26 @@ const none = remove([a], "a", "a")
 assert(
   none.activeId === null && none.presets.length === 0,
   "Removing the last leaves none"
+)
+
+const calls: string[] = []
+const deleted = await deletePreset([a, b], "a", "a", async (id) => {
+  calls.push(id)
+})
+assert(
+  calls.join() === "a" &&
+    deleted.activeId === "b" &&
+    deleted.presets.length === 1,
+  "The key is deleted, then the preset is removed"
+)
+
+const failing = await deletePreset([a, b], "a", "a", async () => {
+  throw new Error("keyring locked")
+}).then(
+  () => null,
+  (cause: Error) => cause.message
+)
+assert(
+  failing === "keyring locked",
+  "A failed key deletion rejects, so the caller keeps the preset"
 )

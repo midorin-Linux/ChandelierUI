@@ -27,7 +27,7 @@ import {
 } from "@/src/hooks/useSettings"
 import { emptyMetrics, toAttemptRequest } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
-import { add, migrate, remove, update } from "@/src/lib/providerPresets"
+import { add, deletePreset, migrate, update } from "@/src/lib/providerPresets"
 import { retryHead } from "@/src/lib/retry"
 import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
@@ -168,16 +168,17 @@ function Chat({
     activate(next, preset.id)
   }
 
+  /** Rejects (keeping the preset) when the key cannot be deleted. */
   async function removePreset() {
     if (!activeId) return
-    const next = remove(presets, activeId, activeId)
+    // The browser preview has no keyring, so only the preset goes.
+    const next = await deletePreset(presets, activeId, activeId, (id) =>
+      isTauri()
+        ? invoke("delete_api_key", { providerId: id })
+        : Promise.resolve()
+    )
     savePresets(next.presets)
     activate(next.presets, next.activeId)
-    try {
-      if (isTauri()) await invoke("delete_api_key", { providerId: activeId })
-    } catch (cause) {
-      setError(errorMessage(cause))
-    }
   }
 
   function setDefaults(next: SessionDefaults) {
@@ -388,7 +389,7 @@ function Chat({
               activeId,
               onSelectPreset: (id) => activate(presets, id),
               onAddPreset: addPreset,
-              onRemovePreset: () => void removePreset(),
+              onRemovePreset: removePreset,
               onRenamePreset: (name) =>
                 activeId &&
                 savePresets(update(presets, activeId, { name }), true),

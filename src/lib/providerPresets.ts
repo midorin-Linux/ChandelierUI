@@ -46,3 +46,17 @@ export function remove(
         : (next[0]?.id ?? null),
   }
 }
+
+/**
+ * Deletes the stored key first and drops the preset only once that succeeded,
+ * so a failed key deletion never leaves a key with no preset. Rejects on failure.
+ */
+export async function deletePreset(
+  presets: ProviderPreset[],
+  activeId: string | null,
+  id: string,
+  deleteKey: (id: string) => Promise<void>
+) {
+  await deleteKey(id)
+  return remove(presets, activeId, id)
+}

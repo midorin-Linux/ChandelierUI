@@ -9,6 +9,14 @@ import {
   ComboboxItem,
   ComboboxList,
 } from "@/src/components/ui/combobox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/src/components/ui/dialog"
 import { Field, FieldLabel } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
 import { errorMessage, isSubmitEnter } from "@/src/lib/utils"
@@ -19,7 +27,8 @@ export interface ProviderSettingsProps {
   activeId: string | null
   onSelectPreset: (id: string) => void
   onAddPreset: () => void
-  onRemovePreset: () => void
+  /** Rejects, keeping the preset, when its key cannot be deleted. */
+  onRemovePreset: () => Promise<void>
   onRenamePreset: (name: string) => void
   providerUrl: string
   setProviderUrl: (url: string) => void
@@ -131,6 +140,9 @@ export function ProviderSettings({
   onRefreshModels,
 }: ProviderSettingsProps) {
   const active = presets.find((p) => p.id === activeId) ?? null
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   // A body-level portal counts as outside the Radix dialog, so clicks never select.
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
   const dialogRef = useCallback(
@@ -140,6 +152,20 @@ export function ProviderSettings({
       ),
     []
   )
+
+  async function confirmDelete() {
+    if (deleting) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await onRemovePreset()
+      setConfirmingDelete(false)
+    } catch (cause) {
+      setDeleteError(errorMessage(cause))
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   function refreshModels() {
     const url = providerUrlInput.trim()
@@ -195,13 +221,51 @@ export function ProviderSettings({
             size="icon"
             variant="outline"
             aria-label="Delete provider"
-            disabled={!active}
-            onClick={onRemovePreset}
+            disabled={!active || deleting}
+            onClick={() => {
+              setDeleteError(null)
+              setConfirmingDelete(true)
+            }}
           >
             <Trash2 />
           </Button>
         </div>
       </Field>
+      <Dialog
+        open={confirmingDelete}
+        onOpenChange={(open) => !deleting && setConfirmingDelete(open)}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Delete provider</DialogTitle>
+            <DialogDescription>
+              Delete the provider &quot;{active?.name}&quot;? Its saved API key
+              is also removed from the system keyring.
+            </DialogDescription>
+          </DialogHeader>
+          {deleteError && (
+            <p role="alert" className="text-sm text-destructive">
+              {deleteError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={deleting}
+              onClick={() => setConfirmingDelete(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {active && (
         <>
           <Field>
