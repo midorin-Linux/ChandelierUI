@@ -141,7 +141,6 @@ function CopyButton({ text }: { text: string }) {
     <Button
       variant="ghost"
       size="icon-sm"
-      className="ml-auto"
       aria-label={copied ? "Copied" : "Copy message"}
       onClick={() => void copy()}
     >
@@ -194,6 +193,11 @@ function AssistantMessage({
         </Trace>
       )}
       {message.content && <MarkdownRenderer content={message.content} />}
+      {message.content && !isPending && (
+        <div>
+          <CopyButton text={message.content} />
+        </div>
+      )}
       {failed && (
         <p className="text-sm text-muted-foreground">
           Incomplete response. This output is not included when you retry.
