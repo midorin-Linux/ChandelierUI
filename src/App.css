@@ -344,3 +344,15 @@
     animation-duration: 0.01ms;
   }
 }
+
+/* Tauri's drag-region script only handles the mouse; on Windows, WebView2's native
+   app-region adds touch and pen. Regions ignore z-index, so anything drawn over
+   them (children, portaled overlays) has to opt out. */
+[data-tauri-drag-region] {
+  app-region: drag;
+}
+[data-tauri-drag-region] > *,
+body > :not(#root),
+[data-slot="combobox-content"] {
+  app-region: no-drag;
+}
