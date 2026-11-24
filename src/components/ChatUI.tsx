@@ -359,6 +359,14 @@ function AssistantMessage({
   failed?: boolean
   actions?: ReactNode
 }) {
+  // Open while the model is thinking; collapse once the answer starts or the stream ends.
+  const thinking = isPending && !message.content
+  const [open, setOpen] = useState(thinking)
+  const [wasThinking, setWasThinking] = useState(thinking)
+  if (thinking !== wasThinking) {
+    setWasThinking(thinking)
+    if (!thinking) setOpen(false)
+  }
   return (
     <article
       aria-label={
@@ -369,10 +377,10 @@ function AssistantMessage({
     >
       {message.reasoning && (
         <Trace>
-          <TraceCollapsible defaultOpen>
+          <TraceCollapsible open={open} onOpenChange={setOpen}>
             <TraceCollapsibleTrigger>
               <TraceLine
-                status={failed ? "error" : isPending ? "running" : undefined}
+                status={failed ? "error" : thinking ? "running" : undefined}
               >
                 <TraceIcon>
                   <BrainIcon />
@@ -380,7 +388,7 @@ function AssistantMessage({
                 <TraceTitle>
                   {failed
                     ? "Thinking interrupted"
-                    : isPending
+                    : thinking
                       ? "Thinking…"
                       : "Thinking"}
                 </TraceTitle>
