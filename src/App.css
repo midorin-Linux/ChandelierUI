@@ -128,6 +128,8 @@
   }
   html {
     @apply font-sans;
+    /* No touch rubber-banding: it drags the whole window UI, title bar included. */
+    overscroll-behavior: none;
   }
 }
 
