@@ -360,7 +360,7 @@ function AssistantMessage({
   actions?: ReactNode
 }) {
   // Open while the model is thinking; collapse once the answer starts or the stream ends.
-  const thinking = isPending && !message.content
+  const thinking = isPending && !message.content.trim()
   const [open, setOpen] = useState(thinking)
   const [wasThinking, setWasThinking] = useState(thinking)
   if (thinking !== wasThinking) {
