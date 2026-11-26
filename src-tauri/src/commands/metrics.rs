@@ -1,9 +1,10 @@
 use serde::Serialize;
+use specta::Type;
 
 use super::types::Message;
 use crate::error::ErrorKind;
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default, Serialize, Type)]
 pub struct CompletionMetrics {
     pub(super) ttft_ms: Option<f64>,
     pub(super) ttfb_ms: Option<f64>,
@@ -33,7 +34,7 @@ pub struct CompletionMetrics {
     pub(super) timed_out: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct MeasuredCompletion {
     pub(super) message: Option<Message>,
     pub(super) error: Option<String>,

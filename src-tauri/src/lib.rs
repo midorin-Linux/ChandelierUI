@@ -39,7 +39,16 @@ pub fn run() {
             app.manage(db);
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(specta_builder().invoke_handler())
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+/// Every command the webview can call; `src/bindings.ts` is generated from it
+/// by `tests/bindings.rs`.
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::new()
+        .commands(tauri_specta::collect_commands![
             commands::chat_completion,
             commands::cancel_chat,
             commands::list_models,
@@ -56,6 +65,6 @@ pub fn run() {
             commands::sessions::delete_session,
             commands::sessions::append_attempt,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        // Commands reject with this (see `error::Error`); typed bindings don't name it.
+        .typ::<error::IpcError>()
 }

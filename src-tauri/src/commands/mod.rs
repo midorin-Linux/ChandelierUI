@@ -30,6 +30,7 @@ impl Drop for CancelGuard<'_> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn chat_completion(
     client: State<'_, HttpClient>,
     db: State<'_, Db>,
@@ -64,11 +65,13 @@ async fn response_timeout(pool: &SqlitePool) -> Result<Option<Duration>, Error> 
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn cancel_chat(client: State<'_, HttpClient>) {
     client.cancel_active();
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_models(
     client: State<'_, HttpClient>,
     db: State<'_, Db>,

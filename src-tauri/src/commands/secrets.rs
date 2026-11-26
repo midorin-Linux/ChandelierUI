@@ -27,6 +27,7 @@ pub(super) async fn load(provider_id: &str) -> Result<Option<String>, Error> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_api_key(provider_id: String, key: String) -> Result<(), Error> {
     let key = valid_key(&key)?.to_owned();
     run(move || Entry::new(SERVICE, &provider_id)?.set_password(&key)).await
@@ -41,6 +42,7 @@ pub(super) fn valid_key(key: &str) -> Result<&str, Error> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_api_key(provider_id: String) -> Result<(), Error> {
     run(
         move || match Entry::new(SERVICE, &provider_id)?.delete_credential() {
@@ -54,6 +56,7 @@ pub async fn delete_api_key(provider_id: String) -> Result<(), Error> {
 /// Checks for the credential with `get_credential`, which never returns the secret.
 /// On macOS the Keychain lookup behind it may still show an access prompt.
 #[tauri::command]
+#[specta::specta]
 pub async fn has_api_key(provider_id: String) -> Result<bool, Error> {
     run(
         move || match Entry::new(SERVICE, &provider_id)?.inner.get_credential() {

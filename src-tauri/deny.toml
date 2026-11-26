@@ -10,6 +10,7 @@ ignore = [
     { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained; transitive via tauri-plugin-opener -> zbus (Linux only). No safe upgrade available." },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained; transitive via tauri-plugin-opener -> zbus (Linux only). No safe upgrade available." },
     { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained; build-time transitive dependency of the Tauri GTK stack (Linux only)." },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained (archived; no known vulnerability); compile-time macro dependency of specta and tauri-specta. Drop when they move off it." },
 ]
 
 [licenses]
@@ -28,6 +29,9 @@ allow = [
     "Unicode-3.0",
     "Zlib",
 ]
+
+# Inflector (via specta-macros) is BSD-2-Clause: permissive, attribution only.
+exceptions = [{ allow = ["BSD-2-Clause"], crate = "Inflector" }]
 
 [licenses.private]
 ignore = true

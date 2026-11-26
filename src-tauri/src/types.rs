@@ -1,7 +1,8 @@
 //! Types shared by `commands` (chat) and `storage` (persistence).
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     System,
@@ -9,7 +10,7 @@ pub enum Role {
     Assistant,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Type)]
 pub struct Message {
     pub(crate) role: Role,
     pub(crate) content: String,
@@ -17,7 +18,7 @@ pub struct Message {
     pub(crate) reasoning: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum ReasoningEffort {
     #[serde(rename = "off")]

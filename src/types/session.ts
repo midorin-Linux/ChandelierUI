@@ -1,36 +1,18 @@
 import type { CompletionAttempt } from "./analysis.ts"
-import type { Effort } from "./chat.ts"
+import type {
+  LoadedSession_Serialize,
+  SessionData_Serialize as SessionData,
+  SessionSummary,
+} from "../bindings"
 
-export interface MessageNode {
-  id: string // crypto.randomUUID()
-  parent_id: string | null // null only for the first message
-  role: "user" | "assistant"
-  content: string
-  reasoning?: string
-  created_at: number // Unix ms
-}
+export type {
+  MessageNode_Serialize as MessageNode,
+  SessionData_Serialize as SessionData,
+  SessionSummary,
+} from "../bindings"
 
-/** Mirrors `SessionData` (schema_version 2) in src-tauri/src/storage/types.rs. */
-export interface SessionData {
-  model: string
-  reasoning_effort: Effort
-  system_prompt: string
-  provider_id?: string | null // preset id; missing in sessions saved before presets
-  messages: MessageNode[] // append-only, never mutated or removed
-  branches: Record<string, string | null> // branch name -> head message id
-  current_branch: string // "main" for new sessions
-}
-
-export interface SessionSummary {
-  id: string
-  title: string
-  created_at: number
-  updated_at: number
-}
-
-export interface LoadedSession {
-  summary: SessionSummary
-  data: SessionData
+/** Attempts cross IPC as plain JSON; the frontend owns their shape. */
+export type LoadedSession = Omit<LoadedSession_Serialize, "attempts"> & {
   attempts: CompletionAttempt[]
 }
 

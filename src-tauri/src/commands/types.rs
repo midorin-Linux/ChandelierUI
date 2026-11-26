@@ -1,14 +1,15 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 pub(crate) use crate::types::{Message, ReasoningEffort, Role};
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, Type)]
 pub struct CompletionDelta {
     pub(super) content: String,
     pub(super) reasoning: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Type)]
 pub struct Provider {
     /// Saved preset id. When set, the backend takes the base URL from the preset
     /// and the API key from the keyring (see `providers::resolve`).
@@ -22,7 +23,7 @@ pub struct Provider {
     pub(super) api_key: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, PartialEq, Type)]
 pub struct Model {
     pub(super) id: String,
     #[serde(
@@ -30,6 +31,8 @@ pub struct Model {
         deserialize_with = "positive_context_length",
         skip_serializing_if = "Option::is_none"
     )]
+    // `deserialize_with` only reads the provider's list; the IPC shape is plain.
+    #[specta(type = Option<u64>)]
     pub(super) context_length: Option<u64>,
 }
 
@@ -45,14 +48,14 @@ fn positive_context_length<'de, D: serde::Deserializer<'de>>(
     Ok(value.as_u64().filter(|length| *length > 0))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Type)]
 pub struct ChatRequest {
     pub(super) model: String,
     pub(super) messages: Vec<Message>,
     pub(super) reasoning_effort: ReasoningEffort,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Type)]
 pub struct ChatPayload {
     pub(super) provider: Provider,
     pub(super) request: ChatRequest,

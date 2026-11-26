@@ -68,7 +68,7 @@ function LatencyWaterfall({ metrics }: { metrics: CompletionMetrics }) {
   const values = [
     first,
     first !== null && content !== null ? Math.max(content - first, 0) : null,
-    content !== null ? Math.max(e2e_ms - content, 0) : null,
+    content !== null && e2e_ms !== null ? Math.max(e2e_ms - content, 0) : null,
   ]
   const total = values.reduce<number>((sum, v) => sum + (v ?? 0), 0)
   if (total <= 0) return null

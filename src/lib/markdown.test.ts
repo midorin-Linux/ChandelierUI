@@ -1,29 +1,34 @@
-import { createServer } from "vite"
+import assert from "node:assert/strict"
+import { after, before, test } from "node:test"
+import { createServer, type ViteDevServer } from "vite"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
-function assert(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message)
-}
+let server: ViteDevServer
+let render: (content: string) => string
+let urlTransform: typeof import("./markdown.ts").urlTransform
 
 // Load the real TSX component through Vite (honours the "@/" alias).
-const server = await createServer({
-  configFile: false,
-  appType: "custom",
-  server: { middlewareMode: true },
-  resolve: { tsconfigPaths: true },
-  logLevel: "silent",
-})
-try {
+before(async () => {
+  server = await createServer({
+    configFile: false,
+    appType: "custom",
+    server: { middlewareMode: true },
+    resolve: { tsconfigPaths: true },
+    logLevel: "silent",
+  })
   const { MarkdownRenderer } = (await server.ssrLoadModule(
     "/src/components/MarkdownRenderer.tsx"
   )) as typeof import("../components/MarkdownRenderer.tsx")
-  const { urlTransform } = (await server.ssrLoadModule(
+  ;({ urlTransform } = (await server.ssrLoadModule(
     "/src/lib/markdown.ts"
-  )) as typeof import("./markdown.ts")
-  const render = (content: string) =>
+  )) as typeof import("./markdown.ts"))
+  render = (content) =>
     renderToStaticMarkup(createElement(MarkdownRenderer, { content }))
+})
+after(() => server?.close())
 
+test("rendering", () => {
   // Rendering
   const rich = render(
     "# T\n\n- [x] done\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n> q\n\n~~s~~\n\n```ts\nconst x = 1\n```"
@@ -37,7 +42,9 @@ try {
   )
   assert(rich.includes("hljs-keyword"), "labeled code highlighted")
   assert(!render("```\nconst x = 1\n```").includes("hljs-"), "no auto-detect")
+})
 
+test("math", () => {
   // The real pipeline renders both LLM delimiter styles, not code lookalikes.
   for (const source of ["$x^2$", String.raw`\(x^2\)`]) {
     const math = render(`Before ${source} after`)
@@ -130,6 +137,9 @@ try {
       !/style="[^"]*1000em/.test(hugeMath),
     "rule dimensions are capped at ten em"
   )
+})
+
+test("security", () => {
   // Security
   const html = render(
     '<script>alert(1)</script><img src=x onerror="alert(1)">hi'
@@ -170,7 +180,9 @@ try {
     ),
     "no cross-expression macro state"
   )
+})
 
+test("incomplete or streaming input does not throw", () => {
   // Incomplete / streaming input must not throw
   for (const partial of [
     "```ts\nconst x =",
@@ -203,6 +215,4 @@ try {
     ),
     "incomplete display math does not swallow following prose"
   )
-} finally {
-  await server.close()
-}
+})

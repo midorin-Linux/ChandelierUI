@@ -32,12 +32,13 @@ preview *args:
 # Check frontend TypeScript types without generating files.
 typecheck:
     pnpm exec tsc --noEmit
+    pnpm exec tsc --noEmit -p tsconfig.test.json
 
 # Run ESLint on the whole repository (same scope as CI).
 lint:
     pnpm lint
 
-# Run frontend state-transition assertions without a test-framework dependency.
+# Run frontend tests with Node's built-in test runner.
 web-test:
     pnpm test
 
@@ -54,6 +55,10 @@ fmt-check:
 # Check all Rust workspace crates without producing an executable.
 rust-check:
     cargo check --manifest-path src-tauri/Cargo.toml --workspace --locked
+
+# Regenerate src/bindings.ts from the Rust commands; fails if it was out of date.
+bindings:
+    cargo test --manifest-path src-tauri/Cargo.toml --locked --test bindings
 
 # Run Rust tests.
 rust-test:

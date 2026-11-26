@@ -2,6 +2,7 @@
 //! webview can tell what went wrong by `kind` and show `message`.
 
 use serde::{Serialize, Serializer};
+use specta::{Type, Types, datatype::DataType};
 
 use crate::storage::StorageError;
 
@@ -38,7 +39,7 @@ pub enum Error {
     Channel,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub enum ErrorKind {
     Database,
@@ -77,8 +78,8 @@ impl Error {
 }
 
 /// The wire shape of `Error`; its sources (`sqlx::Error`, ...) are not `Serialize`.
-#[derive(Serialize)]
-struct IpcError {
+#[derive(Serialize, Type)]
+pub(crate) struct IpcError {
     kind: ErrorKind,
     message: String,
 }
@@ -90,5 +91,12 @@ impl Serialize for Error {
             message: self.to_string(),
         }
         .serialize(serializer)
+    }
+}
+
+/// Exported to TypeScript as `IpcError`, the shape `Serialize` produces.
+impl Type for Error {
+    fn definition(types: &mut Types) -> DataType {
+        IpcError::definition(types)
     }
 }
