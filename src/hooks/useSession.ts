@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { emptyData } from "@/src/lib/sessionDefaults"
 import {
@@ -7,7 +6,7 @@ import {
   createBranch,
   selectBranchFor,
 } from "@/src/lib/sessionTree"
-import { storage } from "@/src/lib/storage"
+import { desktop, storage } from "@/src/lib/api"
 import { errorMessage } from "@/src/lib/utils"
 import { createWriteQueue } from "@/src/lib/writeQueue"
 import type { CompletionAttempt } from "@/src/types/analysis"
@@ -134,7 +133,7 @@ export function useSession(
 
   // Write a pending debounced save before the window closes.
   useEffect(() => {
-    if (!isTauri()) return
+    if (!desktop) return
     // Close even if the save fails: a rejected handler would leave the window stuck open.
     const unlisten = getCurrentWindow().onCloseRequested(() =>
       flush().catch((cause) =>

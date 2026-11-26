@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react"
-import { invoke, isTauri } from "@tauri-apps/api/core"
 import { Play, Plus, RotateCcw, Trash2 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -19,6 +18,7 @@ import {
 } from "@/src/components/ui/dialog"
 import { Field, FieldLabel } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
+import { deleteApiKey, desktop, hasApiKey, setApiKey } from "@/src/lib/api"
 import { errorMessage, isSubmitEnter } from "@/src/lib/utils"
 import type { ApiModel, ProviderPreset } from "@/src/types/chat"
 
@@ -55,15 +55,15 @@ function ApiKeyField({
   onChanged: () => void
 }) {
   const [hasKey, setHasKey] = useState<boolean | null>(
-    isTauri() ? (savedKeys.get(providerId) ?? null) : false
+    desktop ? (savedKeys.get(providerId) ?? null) : false
   )
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isTauri() || savedKeys.has(providerId)) return
+    if (!desktop || savedKeys.has(providerId)) return
     let stale = false
-    invoke<boolean>("has_api_key", { providerId })
+    hasApiKey(providerId)
       .then((saved) => {
         savedKeys.set(providerId, saved)
         if (!stale) setHasKey(saved)
@@ -74,12 +74,10 @@ function ApiKeyField({
     }
   }, [providerId])
 
-  async function run(command: string, args: object, saved: boolean) {
+  async function run(command: () => Promise<void>, saved: boolean) {
     setError(null)
     try {
-      if (!isTauri())
-        throw new Error("Saving keys requires the Tauri desktop app.")
-      await invoke(command, { providerId, ...args })
+      await command()
       savedKeys.set(providerId, saved)
       setHasKey(saved)
       setInput("")
@@ -90,7 +88,7 @@ function ApiKeyField({
   }
 
   const save = () => {
-    if (input.trim()) void run("set_api_key", { key: input.trim() }, true)
+    if (input.trim()) void run(() => setApiKey(providerId, input.trim()), true)
   }
 
   return (
@@ -118,7 +116,7 @@ function ApiKeyField({
         <Button
           variant="outline"
           disabled={!hasKey}
-          onClick={() => void run("delete_api_key", {}, false)}
+          onClick={() => void run(() => deleteApiKey(providerId), false)}
         >
           Delete
         </Button>

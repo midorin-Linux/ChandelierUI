@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react"
-import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 import { Analysis } from "@/src/components/Analysis"
 import { TitleBar } from "@/src/components/TitleBar"
 import { ChatUI } from "@/src/components/ChatUI"
@@ -26,6 +25,7 @@ import {
   SETTING_PRESETS,
   useSettings,
 } from "@/src/hooks/useSettings"
+import { cancelChat, chatCompletion, deleteApiKey } from "@/src/lib/api"
 import { emptyMetrics, toAttemptRequest } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
 import {
@@ -41,7 +41,6 @@ import { errorMessage } from "@/src/lib/utils"
 import type { MeasuredCompletion } from "@/src/types/analysis"
 import {
   efforts,
-  type CompletionDelta,
   type ProviderChatRequest,
   type ProviderPreset,
   type SessionDefaults,
@@ -190,11 +189,7 @@ function Chat({
   async function removePreset() {
     if (!activeId) return
     // The browser preview has no keyring, so only the preset goes.
-    const next = await deletePreset(presets, activeId, activeId, (id) =>
-      isTauri()
-        ? invoke("delete_api_key", { providerId: id })
-        : Promise.resolve()
-    )
+    const next = await deletePreset(presets, activeId, activeId, deleteApiKey)
     savePresets(next.presets)
     selectProvider(next.activeId)
   }
@@ -253,19 +248,10 @@ function Chat({
     let result: MeasuredCompletion
     let reply: MessageNode | null = null
     try {
-      if (!isTauri()) {
-        throw new Error(
-          "Sending messages requires the Tauri desktop app. Open the desktop app instead of the browser preview."
-        )
-      }
-      const onEvent = new Channel<CompletionDelta>((delta) => {
-        dispatchStream({ type: "delta", attemptId: id, delta })
-      })
       await flushSettings() // the backend resolves the preset from stored settings
-      result = await invoke<MeasuredCompletion>("chat_completion", {
-        payload: requestPayload,
-        onEvent,
-      })
+      result = await chatCompletion(requestPayload, (delta) =>
+        dispatchStream({ type: "delta", attemptId: id, delta })
+      )
       if (result.error) setError(result.error)
       else if (result.message) {
         reply = {
@@ -408,9 +394,9 @@ function Chat({
   }
 
   async function cancelCompletion() {
-    if (!inFlight.current || !isTauri()) return
+    if (!inFlight.current) return
     try {
-      await invoke("cancel_chat")
+      await cancelChat()
     } catch (cause) {
       setError(errorMessage(cause))
     }

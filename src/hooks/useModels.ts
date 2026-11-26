@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import { listModels } from "@/src/lib/api"
 import { errorMessage } from "@/src/lib/utils"
 import type { ApiModel } from "@/src/types/chat"
 
@@ -71,18 +71,11 @@ export function useModels(
 
     async function loadModels() {
       try {
-        if (!isTauri()) {
-          throw new Error(
-            "Loading models requires the Tauri desktop app. Open the desktop app instead of the browser preview."
-          )
-        }
         await settingsSaved()
         if (cancelled) return
-        const fetchedModels = await invoke<ApiModel[]>("list_models", {
-          provider: {
-            base_url: providerUrl,
-            ...(providerId ? { id: providerId } : {}),
-          },
+        const fetchedModels = await listModels({
+          base_url: providerUrl,
+          ...(providerId ? { id: providerId } : {}),
         })
         if (cancelled) return
         setModelList({

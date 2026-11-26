@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { isTauri } from "@tauri-apps/api/core"
 import { getCurrentWindow } from "@tauri-apps/api/window"
-import { storage } from "@/src/lib/storage"
+import { desktop, storage } from "@/src/lib/api"
 import { createWriteQueue } from "@/src/lib/writeQueue"
 
 export const SETTING_BASE_URL = "provider.base_url"
@@ -83,7 +82,7 @@ export function useSettings() {
 
   // Write pending values on unmount and before the window closes.
   useEffect(() => {
-    const unlisten = isTauri()
+    const unlisten = desktop
       ? getCurrentWindow().onCloseRequested(() => flushSettings())
       : null
     return () => {
