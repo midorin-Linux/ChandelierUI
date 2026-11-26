@@ -6,7 +6,6 @@ pub(crate) mod tests;
 mod types;
 
 use std::{
-    fmt,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -19,29 +18,14 @@ pub use types::{LoadedSession, SessionData, SessionSummary};
 
 pub struct Db(pub SqlitePool);
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum StorageError {
-    Sqlx(sqlx::Error),
+    #[error("database error: {0}")]
+    Sqlx(#[from] sqlx::Error),
+    #[error("not found: {0}")]
     NotFound(String),
+    #[error("invalid input: {0}")]
     Invalid(String),
-}
-
-impl fmt::Display for StorageError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Sqlx(error) => write!(f, "database error: {error}"),
-            Self::NotFound(id) => write!(f, "not found: {id}"),
-            Self::Invalid(reason) => write!(f, "invalid input: {reason}"),
-        }
-    }
-}
-
-impl std::error::Error for StorageError {}
-
-impl From<sqlx::Error> for StorageError {
-    fn from(error: sqlx::Error) -> Self {
-        Self::Sqlx(error)
-    }
 }
 
 pub(crate) fn now_ms() -> i64 {

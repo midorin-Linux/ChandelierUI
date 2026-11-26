@@ -1,4 +1,9 @@
-import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
+import {
+  Channel,
+  invoke as tauriInvoke,
+  isTauri,
+  type InvokeArgs,
+} from "@tauri-apps/api/core"
 import { createMemoryStorage } from "@/src/lib/memoryStorage"
 import { createSettingsWriter } from "@/src/lib/settingsWriter"
 import type { MeasuredCompletion } from "@/src/types/analysis"
@@ -12,6 +17,7 @@ import type {
   SessionSummary,
   Storage,
 } from "@/src/types/session"
+import type { ErrorKind, IpcError } from "@/src/types/error"
 
 /**
  * Every Tauri command the frontend calls lives here.
@@ -19,6 +25,32 @@ import type {
  * and commands that need the backend reject with a readable message.
  */
 export const desktop = isTauri()
+
+/** A failed command; `kind` says what went wrong, `message` is for display. */
+export class ApiError extends Error {
+  kind: ErrorKind
+
+  constructor({ kind, message }: IpcError) {
+    super(message)
+    this.name = "ApiError"
+    this.kind = kind
+  }
+}
+
+const isIpcError = (cause: unknown): cause is IpcError =>
+  typeof cause === "object" &&
+  cause !== null &&
+  typeof (cause as IpcError).kind === "string" &&
+  typeof (cause as IpcError).message === "string"
+
+/** Commands reject with `{ kind, message }`; Tauri itself may reject with a string. */
+async function invoke<T>(command: string, args?: InvokeArgs): Promise<T> {
+  try {
+    return await tauriInvoke<T>(command, args)
+  } catch (cause) {
+    throw isIpcError(cause) ? new ApiError(cause) : cause
+  }
+}
 
 const requireDesktop = (action: string) => {
   if (!desktop) {

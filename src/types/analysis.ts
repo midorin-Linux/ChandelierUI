@@ -1,4 +1,5 @@
 import type { ChatMessage, Effort } from "./chat"
+import type { ErrorKind } from "./error"
 
 export interface CompletionMetrics {
   ttft_ms: number | null
@@ -32,11 +33,19 @@ export interface CompletionMetrics {
 export interface MeasuredCompletion {
   message: ChatMessage | null
   error: string | null
+  /** Set exactly when `error` is; null when the request failed outside the backend. */
+  error_kind: ErrorKind | null
   metrics: CompletionMetrics
 }
 
-/** What is stored of a completion: the reply itself lives in the session tree. */
-export type StoredCompletionResult = Omit<MeasuredCompletion, "message">
+/**
+ * What is stored of a completion: the reply itself lives in the session tree.
+ * Attempts stored before `error_kind` existed lack it.
+ */
+export type StoredCompletionResult = Omit<
+  MeasuredCompletion,
+  "message" | "error_kind"
+> & { error_kind?: ErrorKind | null }
 
 /** The request sent = system_prompt + pathToRoot(head_message_id). */
 export interface AttemptRequest {

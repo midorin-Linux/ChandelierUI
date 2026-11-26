@@ -20,6 +20,10 @@ use super::{
         StreamOptions, WireRequest,
     },
 };
+use crate::{
+    error::{Error, ErrorKind},
+    storage::StorageError,
+};
 
 async fn server(status: &str, body: &str) -> (String, tokio::task::JoinHandle<String>) {
     stream_server(status, vec![(Duration::ZERO, body.as_bytes().to_vec())], 0).await
@@ -265,7 +269,13 @@ fn retains_emitted_deltas_on_stream_errors() {
             .and_then(|_| decoder.finish())
             .and_then(|()| stream.validate())
             .unwrap_err();
-        assert!(error.contains(expected), "{error}");
+        assert!(error.to_string().contains(expected), "{error}");
+        let kind = if matches!(expected, "stream error" | "refused") {
+            ErrorKind::ProviderError
+        } else {
+            ErrorKind::InvalidResponse
+        };
+        assert_eq!(error.kind(), kind);
         assert_eq!(
             deltas,
             vec![CompletionDelta {
@@ -385,6 +395,14 @@ async fn rejects_provider_errors_and_invalid_replies() {
         let error = result.error.unwrap();
         assert!(error.contains(expected), "{error}");
         assert!(!error.contains("secret"));
+        let kind = if !status.starts_with("200") {
+            ErrorKind::HttpStatus
+        } else if matches!(expected, "stream error" | "refused" | "error finish reason") {
+            ErrorKind::ProviderError
+        } else {
+            ErrorKind::InvalidResponse
+        };
+        assert_eq!(result.error_kind, Some(kind));
         task.await.unwrap();
     }
 }
@@ -536,6 +554,7 @@ async fn records_body_timeout_and_connection_failure() {
         http_client_with_timeouts(Duration::from_secs(5), Duration::from_millis(100)).unwrap();
     let result = complete(&client, payload(base, "off"), |_| Ok(())).await;
     assert!(result.error.unwrap().contains("timed out"));
+    assert_eq!(result.error_kind, Some(ErrorKind::Timeout));
     assert!(result.metrics.timed_out);
     assert_eq!(result.metrics.http_status, Some(200));
     assert_eq!(result.message.unwrap().content, "partial");
@@ -546,6 +565,7 @@ async fn records_body_timeout_and_connection_failure() {
     drop(listener);
     let result = complete(&http_client().unwrap(), payload(base, "off"), |_| Ok(())).await;
     assert!(result.error.unwrap().contains("Could not reach"));
+    assert_eq!(result.error_kind, Some(ErrorKind::Network));
     assert_eq!(result.metrics.http_status, None);
     assert_eq!(result.metrics.ttfb_ms, None);
     assert_eq!(result.metrics.ttft_ms, None);
@@ -572,7 +592,7 @@ fn bounds_sse_events_and_handles_every_byte_fragment() {
     let error = decoder
         .feed(&vec![b'x'; MAX_SSE_EVENT_BYTES + 1], |_| Ok(false))
         .unwrap_err();
-    assert!(error.contains("oversized"));
+    assert!(error.to_string().contains("oversized"));
     assert!(decoder.line.len() <= MAX_SSE_EVENT_BYTES);
 }
 
@@ -724,10 +744,60 @@ async fn rejects_model_errors_and_invalid_ids() {
         )
         .await
         .unwrap_err();
+        let kind = if status.starts_with("200") {
+            ErrorKind::InvalidResponse
+        } else {
+            ErrorKind::HttpStatus
+        };
+        assert_eq!(error.kind(), kind);
+        let error = error.to_string();
         assert!(error.contains(expected), "{error}");
         assert!(!error.contains("secret"));
         task.await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn model_list_body_failures_are_timeout_or_network() {
+    let client =
+        http_client_with_timeouts(Duration::from_secs(5), Duration::from_millis(100)).unwrap();
+    for (chunks, missing_bytes, kind) in [
+        (
+            vec![
+                (Duration::ZERO, br#"{"data":"#.to_vec()),
+                (Duration::from_millis(300), b"[]}".to_vec()),
+            ],
+            0,
+            ErrorKind::Timeout,
+        ),
+        (
+            vec![(Duration::ZERO, br#"{"data":"#.to_vec())],
+            5,
+            ErrorKind::Network,
+        ),
+    ] {
+        let (base_url, task) = stream_server("200 OK", chunks, missing_bytes).await;
+        let error = fetch_models(
+            &client,
+            Provider {
+                id: None,
+                base_url: Some(base_url),
+                api_key: None,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error.kind(), kind, "{error}");
+        task.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn unsendable_api_key_is_invalid_input() {
+    let mut chat = payload("http://localhost:1/v1".into(), "off");
+    chat.provider.api_key = Some("sk\nbad".into());
+    let result = complete(&http_client().unwrap(), chat, |_| Ok(())).await;
+    assert_eq!(result.error_kind, Some(ErrorKind::InvalidInput));
 }
 
 #[test]
@@ -770,13 +840,9 @@ async fn rejects_blank_request_fields() {
             "messages" => request.request.messages.clear(),
             _ => request.request.messages[0].content = " ".into(),
         }
-        assert!(
-            complete(&client, request, |_| Ok(()))
-                .await
-                .error
-                .unwrap()
-                .contains("nonblank")
-        );
+        let result = complete(&client, request, |_| Ok(())).await;
+        assert!(result.error.unwrap().contains("nonblank"));
+        assert_eq!(result.error_kind, Some(ErrorKind::InvalidInput));
     }
 }
 
@@ -878,7 +944,7 @@ fn allows_empty_trailing_choice_after_finish_reason_but_rejects_content_or_confl
         let mut s = CompletionStream::default();
         assert!(!s.event(finish, 10.0, &mut emit).unwrap());
         let err = s.event(bad_after, 20.0, &mut emit).unwrap_err();
-        assert!(err.contains("after its finish reason"), "{err}");
+        assert!(err.to_string().contains("after its finish reason"), "{err}");
     }
 }
 
@@ -912,6 +978,7 @@ async fn allows_long_streams_within_chunk_timeout_and_enforces_connect_timeout()
         http_client_with_timeouts(Duration::from_millis(80), Duration::from_secs(5)).unwrap();
     let result = complete(&slow_connect, payload(base, "off"), |_| Ok(())).await;
     assert!(result.error.unwrap().contains("timed out"));
+    assert_eq!(result.error_kind, Some(ErrorKind::Timeout));
     assert!(result.metrics.timed_out);
     assert_eq!(result.metrics.http_status, None);
     server_task.await.unwrap();
@@ -920,14 +987,14 @@ async fn allows_long_streams_within_chunk_timeout_and_enforces_connect_timeout()
 #[tokio::test]
 async fn saved_response_timeout_overrides_the_client_default() {
     let pool = crate::storage::tests::memory_pool().await;
-    assert_eq!(response_timeout(&pool).await, Ok(None));
+    assert_eq!(response_timeout(&pool).await.unwrap(), None);
     for (saved, expected) in [(0, None), (3601, None), (600, Some(600))] {
         crate::storage::set_setting(&pool, "chat.timeout_secs", &saved.into())
             .await
             .unwrap();
         assert_eq!(
-            response_timeout(&pool).await,
-            Ok(expected.map(Duration::from_secs))
+            response_timeout(&pool).await.unwrap(),
+            expected.map(Duration::from_secs)
         );
     }
 
@@ -975,6 +1042,7 @@ async fn cancels_streaming_completion_and_preserves_partial_text() {
     )
     .await;
     assert_eq!(result.error.as_deref(), Some("Generation cancelled."));
+    assert_eq!(result.error_kind, Some(ErrorKind::Cancelled));
     assert!(!result.metrics.timed_out);
     assert_eq!(result.message.unwrap().content, "partial");
     task.await.unwrap();
@@ -1000,7 +1068,7 @@ async fn presets_pool(base_url: &str) -> sqlx::SqlitePool {
     pool
 }
 
-async fn no_key_read(_: &str) -> Result<Option<String>, String> {
+async fn no_key_read(_: &str) -> Result<Option<String>, Error> {
     panic!("the keyring must not be read")
 }
 
@@ -1040,7 +1108,11 @@ async fn unknown_preset_id_fails_without_network_or_key_access() {
     let error = list_models_with(&http_client().unwrap(), &pool, provider, no_key_read)
         .await
         .unwrap_err();
-    assert!(error.contains("Unknown provider preset"), "{error}");
+    assert_eq!(error.kind(), ErrorKind::Preset);
+    assert!(
+        error.to_string().contains("Unknown provider preset"),
+        "{error}"
+    );
     assert!(
         tokio::time::timeout(Duration::from_millis(100), task)
             .await
@@ -1066,7 +1138,33 @@ async fn request_without_id_uses_ipc_url_and_sends_no_key() {
 #[test]
 fn api_keys_are_trimmed_and_blank_keys_rejected() {
     use super::secrets::valid_key;
-    assert_eq!(valid_key("  sk-abc \n"), Ok("sk-abc"));
+    assert_eq!(valid_key("  sk-abc \n").unwrap(), "sk-abc");
     assert!(valid_key("   ").is_err());
-    assert!(valid_key("").is_err());
+    assert_eq!(valid_key("").unwrap_err().kind(), ErrorKind::InvalidInput);
+}
+
+#[test]
+fn errors_cross_ipc_as_kind_and_message() {
+    for (error, expected) in [
+        (
+            Error::Storage(StorageError::NotFound("s1".into())),
+            serde_json::json!({"kind": "notFound", "message": "not found: s1"}),
+        ),
+        (
+            Error::UnknownPreset("p1".into()),
+            serde_json::json!({"kind": "preset", "message": "Unknown provider preset: p1"}),
+        ),
+        (
+            Error::Channel,
+            serde_json::json!({"kind": "channel", "message": "Could not deliver the chat response to the UI."}),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(error).unwrap(), expected);
+    }
+    let failed = CompletionStream::default().finish(0.0, Some(Error::Cancelled));
+    let wire = serde_json::to_value(failed).unwrap();
+    assert_eq!(wire["error"], "Generation cancelled.");
+    assert_eq!(wire["error_kind"], "cancelled");
+    let wire = serde_json::to_value(CompletionStream::default().finish(0.0, None)).unwrap();
+    assert_eq!(wire["error_kind"], serde_json::Value::Null);
 }

@@ -1,30 +1,24 @@
 use serde_json::Value;
 use tauri::State;
 
-use crate::storage::{self, Db, LoadedSession, SessionData, SessionSummary};
+use crate::{
+    error::Error,
+    storage::{self, Db, LoadedSession, SessionData, SessionSummary},
+};
 
 #[tauri::command]
-pub async fn list_sessions(db: State<'_, Db>) -> Result<Vec<SessionSummary>, String> {
-    storage::sessions::list(&db.0)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn list_sessions(db: State<'_, Db>) -> Result<Vec<SessionSummary>, Error> {
+    Ok(storage::sessions::list(&db.0).await?)
 }
 
 #[tauri::command]
-pub async fn create_session(
-    db: State<'_, Db>,
-    data: SessionData,
-) -> Result<SessionSummary, String> {
-    storage::sessions::create(&db.0, &data)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn create_session(db: State<'_, Db>, data: SessionData) -> Result<SessionSummary, Error> {
+    Ok(storage::sessions::create(&db.0, &data).await?)
 }
 
 #[tauri::command]
-pub async fn load_session(db: State<'_, Db>, id: String) -> Result<LoadedSession, String> {
-    storage::sessions::load(&db.0, &id)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn load_session(db: State<'_, Db>, id: String) -> Result<LoadedSession, Error> {
+    Ok(storage::sessions::load(&db.0, &id).await?)
 }
 
 #[tauri::command]
@@ -33,24 +27,18 @@ pub async fn save_session(
     id: String,
     title: Option<String>,
     data: SessionData,
-) -> Result<i64, String> {
-    storage::sessions::save(&db.0, &id, title.as_deref(), &data)
-        .await
-        .map_err(|e| e.to_string())
+) -> Result<i64, Error> {
+    Ok(storage::sessions::save(&db.0, &id, title.as_deref(), &data).await?)
 }
 
 #[tauri::command]
-pub async fn rename_session(db: State<'_, Db>, id: String, title: String) -> Result<(), String> {
-    storage::sessions::rename(&db.0, &id, &title)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn rename_session(db: State<'_, Db>, id: String, title: String) -> Result<(), Error> {
+    Ok(storage::sessions::rename(&db.0, &id, &title).await?)
 }
 
 #[tauri::command]
-pub async fn delete_session(db: State<'_, Db>, id: String) -> Result<(), String> {
-    storage::sessions::delete(&db.0, &id)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn delete_session(db: State<'_, Db>, id: String) -> Result<(), Error> {
+    Ok(storage::sessions::delete(&db.0, &id).await?)
 }
 
 #[tauri::command]
@@ -58,8 +46,6 @@ pub async fn append_attempt(
     db: State<'_, Db>,
     session_id: String,
     attempt: Value,
-) -> Result<(), String> {
-    storage::attempts::append(&db.0, &session_id, &attempt)
-        .await
-        .map_err(|e| e.to_string())
+) -> Result<(), Error> {
+    Ok(storage::attempts::append(&db.0, &session_id, &attempt).await?)
 }

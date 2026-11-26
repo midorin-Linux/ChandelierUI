@@ -19,7 +19,7 @@ use sqlx::SqlitePool;
 use tauri::{State, ipc::Channel};
 use types::{ChatPayload, CompletionDelta, Model, Provider};
 
-use crate::storage::Db;
+use crate::{error::Error, storage::Db};
 
 struct CancelGuard<'a>(&'a HttpClient, u64);
 
@@ -35,7 +35,7 @@ pub async fn chat_completion(
     db: State<'_, Db>,
     mut payload: ChatPayload,
     on_event: Channel<CompletionDelta>,
-) -> Result<MeasuredCompletion, String> {
+) -> Result<MeasuredCompletion, Error> {
     providers::resolve(&db.0, &mut payload.provider, secrets::load).await?;
     payload.timeout = response_timeout(&db.0).await?;
     let (id, rx) = client.register_cancel();
@@ -47,19 +47,15 @@ pub async fn chat_completion(
     };
     Ok(
         complete_cancellable(client.inner(), payload, cancel, |delta| {
-            on_event
-                .send(delta)
-                .map_err(|_| "Could not deliver the chat response to the UI.".into())
+            on_event.send(delta).map_err(|_| Error::Channel)
         })
         .await,
     )
 }
 
 /// The saved response timeout; `None` when unset or outside 1..=3600 seconds.
-async fn response_timeout(pool: &SqlitePool) -> Result<Option<Duration>, String> {
-    let settings = crate::storage::get_settings(pool)
-        .await
-        .map_err(|error| error.to_string())?;
+async fn response_timeout(pool: &SqlitePool) -> Result<Option<Duration>, Error> {
+    let settings = crate::storage::get_settings(pool).await?;
     Ok(settings
         .get("chat.timeout_secs")
         .and_then(serde_json::Value::as_u64)
@@ -77,7 +73,7 @@ pub async fn list_models(
     client: State<'_, HttpClient>,
     db: State<'_, Db>,
     provider: Provider,
-) -> Result<Vec<Model>, String> {
+) -> Result<Vec<Model>, Error> {
     list_models_with(client.inner(), &db.0, provider, secrets::load).await
 }
 
@@ -85,8 +81,8 @@ async fn list_models_with(
     client: &HttpClient,
     pool: &SqlitePool,
     mut provider: Provider,
-    load_key: impl AsyncFnOnce(&str) -> Result<Option<String>, String>,
-) -> Result<Vec<Model>, String> {
+    load_key: impl AsyncFnOnce(&str) -> Result<Option<String>, Error>,
+) -> Result<Vec<Model>, Error> {
     providers::resolve(pool, &mut provider, load_key).await?;
     fetch_models(client, provider).await
 }

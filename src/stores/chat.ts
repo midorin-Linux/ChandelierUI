@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import { create, useStore } from "zustand"
 import {
+  ApiError,
   cancelChat,
   chatCompletion,
   deleteApiKey,
@@ -266,6 +267,7 @@ async function requestCompletion(
     result = {
       message: null,
       error: message,
+      error_kind: cause instanceof ApiError ? cause.kind : null,
       metrics: emptyMetrics(performance.now() - started),
     }
   } finally {
@@ -285,7 +287,11 @@ async function requestCompletion(
     concurrency: 1,
     request: toAttemptRequest(requestPayload, settings.system_prompt, headId),
     context_length: contextLength,
-    result: { error: result.error, metrics: result.metrics },
+    result: {
+      error: result.error,
+      error_kind: result.error_kind,
+      metrics: result.metrics,
+    },
   })
 }
 

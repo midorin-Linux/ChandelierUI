@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::types::Message;
+use crate::error::ErrorKind;
 
 #[derive(Debug, Default, Serialize)]
 pub struct CompletionMetrics {
@@ -32,10 +33,12 @@ pub struct CompletionMetrics {
     pub(super) timed_out: bool,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Serialize)]
 pub struct MeasuredCompletion {
     pub(super) message: Option<Message>,
     pub(super) error: Option<String>,
+    /// What kind of failure `error` is; set exactly when `error` is.
+    pub(super) error_kind: Option<ErrorKind>,
     pub(super) metrics: CompletionMetrics,
 }
 
