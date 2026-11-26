@@ -23,8 +23,14 @@ import {
   providerLocation,
   summarizeAttempts,
 } from "@/src/lib/analysis"
-import type { CompletionAttempt, CompletionMetrics } from "@/src/types/analysis"
-import type { ProviderChatRequest } from "@/src/types/chat"
+import type { CompletionMetrics } from "@/src/types/analysis"
+import {
+  buildPayload,
+  useActiveStream,
+  useChatContext,
+  useMessages,
+  useSession,
+} from "@/src/stores/chat"
 
 function MetricSection({
   title,
@@ -128,15 +134,14 @@ function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs text-muted-foreground">{children}</p>
 }
 
-export function Analysis({
-  payload,
-  attempts,
-  isPending,
-}: {
-  payload: ProviderChatRequest
-  attempts: readonly CompletionAttempt[]
-  isPending: boolean
-}) {
+export function Analysis() {
+  const attempts = useSession((s) => s.attempts)
+  const { isPending } = useActiveStream()
+  // The request the composer would send now.
+  const messages = useMessages()
+  const context = useChatContext()
+  const data = useSession((s) => s.data)
+  const payload = buildPayload(messages, context, data)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const latest = attempts[attempts.length - 1]
   const selected =

@@ -10,18 +10,14 @@ import {
   ComboboxList,
 } from "@/src/components/ui/combobox"
 import { Textarea } from "@/src/components/ui/textarea"
-import { efforts, type ApiModel, type SessionDefaults } from "@/src/types/chat"
+import { efforts } from "@/src/types/chat"
+import { useChatContext } from "@/src/stores/chat"
+import { setDefaults, useSettingsStore } from "@/src/stores/settings"
 import { Separator } from "@/src/components/ui/separator"
 
-export function GeneralSettings({
-  models,
-  defaults,
-  onDefaultsChange,
-}: {
-  models: ApiModel[]
-  defaults: SessionDefaults
-  onDefaultsChange: (defaults: SessionDefaults) => void
-}) {
+export function GeneralSettings() {
+  const { models } = useChatContext()
+  const defaults = useSettingsStore((s) => s.defaults)
   const { theme, setTheme } = useTheme()
   // A body-level portal counts as outside the Radix dialog, so clicks never select.
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
@@ -76,9 +72,7 @@ export function GeneralSettings({
           <Textarea
             placeholder="You are a helpful assistant."
             value={defaults.systemPrompt}
-            onChange={(e) =>
-              onDefaultsChange({ ...defaults, systemPrompt: e.target.value })
-            }
+            onChange={(e) => setDefaults({ systemPrompt: e.target.value })}
           />
         </div>
         <Separator />
@@ -92,9 +86,7 @@ export function GeneralSettings({
           <Combobox
             items={efforts}
             value={defaults.effort}
-            onValueChange={(value) =>
-              value && onDefaultsChange({ ...defaults, effort: value })
-            }
+            onValueChange={(value) => value && setDefaults({ effort: value })}
           >
             <ComboboxInput placeholder={"Select an effort..."} />
             <ComboboxContent container={dialog}>
@@ -125,9 +117,7 @@ export function GeneralSettings({
           <Combobox
             items={modelIds}
             value={defaults.model || null}
-            onValueChange={(value) =>
-              onDefaultsChange({ ...defaults, model: value ?? "" })
-            }
+            onValueChange={(value) => setDefaults({ model: value ?? "" })}
           >
             <ComboboxInput
               placeholder="Select a model..."

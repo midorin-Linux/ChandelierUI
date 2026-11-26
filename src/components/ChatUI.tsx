@@ -23,36 +23,31 @@ import {
 import { awaitsReply } from "@/src/lib/retry"
 import { children, siblings } from "@/src/lib/sessionTree"
 import { isSubmitEnter } from "@/src/lib/utils"
+import {
+  editMessage as onEdit,
+  regenerate as onRegenerate,
+  retry as onRetry,
+  switchBranch as onSwitch,
+  useActiveStream,
+  useBusy,
+  useChatContext,
+  useError,
+  useMessages,
+  useSession,
+} from "@/src/stores/chat"
 import type { ChatMessage } from "@/src/types/chat"
 import type { MessageNode } from "@/src/types/session"
 
-export function ChatUI({
-  messages,
-  allMessages,
-  partialMessage,
-  isPending,
-  busy,
-  error,
-  canSend,
-  onRetry,
-  onRegenerate,
-  onEdit,
-  onSwitch,
-}: {
-  messages: readonly MessageNode[]
-  /** Every node in the session, to find siblings. */
-  allMessages: readonly MessageNode[]
-  partialMessage: ChatMessage | null
-  isPending: boolean
-  /** Sending, switching or restoring: hides the missing-reply notice. */
-  busy: boolean
-  error: string | null
-  canSend: boolean
-  onRetry: () => void
-  onRegenerate: (message: MessageNode) => void
-  onEdit: (message: MessageNode, content: string) => void
-  onSwitch: (nodeId: string) => void
-}) {
+export function ChatUI() {
+  const messages = useMessages()
+  // Every node in the session, to find siblings.
+  const allMessages = useSession((s) => s.data.messages)
+  // Sending, switching or restoring: hides the missing-reply notice.
+  const busy = useBusy()
+  const error = useError()
+  const { canSend } = useChatContext()
+  // Subscribed here, not in the parent, so only the conversation re-renders per delta.
+  const { message: partialMessage, isPending } = useActiveStream()
   const messageEnd = useRef<HTMLDivElement>(null)
   const log = useRef<HTMLDivElement>(null)
   const scrollTarget = useRef<string | null>(null)

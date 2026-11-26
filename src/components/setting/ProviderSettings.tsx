@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react"
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react"
 import { Play, Plus, RotateCcw, Trash2 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -19,26 +24,20 @@ import {
 } from "@/src/components/ui/dialog"
 import { Field, FieldLabel } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
+import { deleteApiKey, desktop, hasApiKey, setApiKey } from "@/src/lib/api"
 import { errorMessage, isSubmitEnter } from "@/src/lib/utils"
-import type { ApiModel, ProviderPreset } from "@/src/types/chat"
-
-export interface ProviderSettingsProps {
-  presets: ProviderPreset[]
-  activeId: string | null
-  onSelectPreset: (id: string) => void
-  onAddPreset: () => void
-  /** Rejects, keeping the preset, when its key cannot be deleted. */
-  onRemovePreset: () => Promise<void>
-  onRenamePreset: (name: string) => void
-  providerUrl: string
-  setProviderUrl: (url: string) => void
-  providerUrlInput: string
-  setProviderUrlInput: (url: string) => void
-  models: readonly ApiModel[]
-  modelsLoading: boolean
-  modelsStatus: string
-  onRefreshModels: () => void
-}
+import {
+  addPreset as onAddPreset,
+  refreshModels as onRefreshModels,
+  removePreset as onRemovePreset,
+  renamePreset as onRenamePreset,
+  selectProvider as onSelectPreset,
+  getContext,
+  setProviderUrl,
+  useChatContext,
+} from "@/src/stores/chat"
+import { useSettingsStore } from "@/src/stores/settings"
+import type { ProviderPreset } from "@/src/types/chat"
 
 /** `has_api_key` results per provider id, so opening settings doesn't hit the keyring each time. */
 const savedKeys = new Map<string, boolean>()
@@ -55,15 +54,15 @@ function ApiKeyField({
   onChanged: () => void
 }) {
   const [hasKey, setHasKey] = useState<boolean | null>(
-    isTauri() ? (savedKeys.get(providerId) ?? null) : false
+    desktop ? (savedKeys.get(providerId) ?? null) : false
   )
   const [input, setInput] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isTauri() || savedKeys.has(providerId)) return
+    if (!desktop || savedKeys.has(providerId)) return
     let stale = false
-    invoke<boolean>("has_api_key", { providerId })
+    hasApiKey(providerId)
       .then((saved) => {
         savedKeys.set(providerId, saved)
         if (!stale) setHasKey(saved)
@@ -74,12 +73,10 @@ function ApiKeyField({
     }
   }, [providerId])
 
-  async function run(command: string, args: object, saved: boolean) {
+  async function run(command: () => Promise<void>, saved: boolean) {
     setError(null)
     try {
-      if (!isTauri())
-        throw new Error("Saving keys requires the Tauri desktop app.")
-      await invoke(command, { providerId, ...args })
+      await command()
       savedKeys.set(providerId, saved)
       setHasKey(saved)
       setInput("")
@@ -90,7 +87,7 @@ function ApiKeyField({
   }
 
   const save = () => {
-    if (input.trim()) void run("set_api_key", { key: input.trim() }, true)
+    if (input.trim()) void run(() => setApiKey(providerId, input.trim()), true)
   }
 
   return (
@@ -118,7 +115,7 @@ function ApiKeyField({
         <Button
           variant="outline"
           disabled={!hasKey}
-          onClick={() => void run("delete_api_key", {}, false)}
+          onClick={() => void run(() => deleteApiKey(providerId), false)}
         >
           Delete
         </Button>
@@ -135,22 +132,43 @@ function ApiKeyField({
   )
 }
 
-export function ProviderSettings({
-  presets,
-  activeId,
-  onSelectPreset,
-  onAddPreset,
-  onRemovePreset,
-  onRenamePreset,
-  providerUrl,
-  setProviderUrl,
-  providerUrlInput,
-  setProviderUrlInput,
-  models,
-  modelsLoading,
-  modelsStatus,
-  onRefreshModels,
-}: ProviderSettingsProps) {
+export function ProviderSettings() {
+  const presets = useSettingsStore((s) => s.presets)
+  const {
+    providerId: activeId,
+    providerUrl,
+    models,
+    modelsLoading,
+    modelsStatus,
+  } = useChatContext()
+  // The URL being typed belongs to one preset, so switching presets drops it.
+  const [urlDraft, setUrlDraft] = useState({ id: activeId, value: providerUrl })
+  const providerUrlInput =
+    urlDraft.id === activeId ? urlDraft.value : providerUrl
+  const setProviderUrlInput = (value: string) =>
+    setUrlDraft({ id: activeId, value })
+  // Closing the dialog (e.g. Escape) unmounts the field without a blur, so commit then.
+  const unsaved = useRef({
+    id: activeId,
+    input: providerUrlInput,
+    url: providerUrl,
+  })
+  useEffect(() => {
+    unsaved.current = {
+      id: activeId,
+      input: providerUrlInput,
+      url: providerUrl,
+    }
+  })
+  useEffect(
+    () => () => {
+      const { id, input, url } = unsaved.current
+      // Only into the preset it was typed for.
+      if (id === getContext().providerId && input.trim() !== url)
+        setProviderUrl(input.trim())
+    },
+    []
+  )
   const active = presets.find((p) => p.id === activeId) ?? null
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)

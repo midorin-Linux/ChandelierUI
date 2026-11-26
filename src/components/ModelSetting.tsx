@@ -15,35 +15,24 @@ import { ScrollArea } from "@/src/components/ui/scroll-area"
 import { Slider } from "@/src/components/ui/slider"
 import { Textarea } from "@/src/components/ui/textarea"
 import { efforts } from "@/src/types/chat"
-import type { ApiModel, Effort } from "@/src/types/chat"
-
-export interface ModelSettingProps {
-  models: ApiModel[]
-  modelsLoading: boolean
-  modelsStatus: string
-  onRefreshModels: () => void
-  onOpenProviderSettings: () => void
-  selectedModel: string
-  onModelChange: (model: string) => void
-  selectedEffort: Effort
-  onEffortChange: (effort: Effort) => void
-  systemPrompt: string
-  onSystemPromptChange: (prompt: string) => void
-}
+import {
+  refreshModels,
+  selectModel,
+  setEffort,
+  setSystemPrompt,
+  useChatContext,
+  useSession,
+} from "@/src/stores/chat"
 
 export function ModelSetting({
-  models,
-  modelsLoading,
-  modelsStatus,
-  onRefreshModels,
   onOpenProviderSettings,
-  selectedModel,
-  onModelChange,
-  selectedEffort,
-  onEffortChange,
-  systemPrompt,
-  onSystemPromptChange,
-}: ModelSettingProps) {
+}: {
+  onOpenProviderSettings: () => void
+}) {
+  const { models, modelsLoading, modelsStatus, selectedModel } =
+    useChatContext()
+  const selectedEffort = useSession((s) => s.data.reasoning_effort)
+  const systemPrompt = useSession((s) => s.data.system_prompt)
   return (
     <DialogContent className="flex aspect-16/10 w-[min(80rem,calc(100%-2rem),calc((100dvh-2rem)*16/10))] flex-col overflow-hidden sm:max-w-none">
       <header className="border-b px-4 py-4 pr-14">
@@ -61,7 +50,7 @@ export function ModelSetting({
             variant="outline"
             className="my-2"
             disabled={modelsLoading}
-            onClick={onRefreshModels}
+            onClick={refreshModels}
           >
             Refresh models
           </Button>
@@ -80,7 +69,7 @@ export function ModelSetting({
                   variant={selectedModel === model.id ? "secondary" : "ghost"}
                   className="h-auto w-full shrink-0 flex-col items-start justify-start gap-1 py-2 whitespace-normal text-left"
                   aria-pressed={selectedModel === model.id}
-                  onClick={() => onModelChange(model.id)}
+                  onClick={() => selectModel(model.id)}
                 >
                   <span className="w-full truncate">{model.id}</span>
                 </Button>
@@ -105,7 +94,7 @@ export function ModelSetting({
                         placeholder="You are a helpful assistant."
                         value={systemPrompt}
                         onChange={(event) =>
-                          onSystemPromptChange(event.target.value)
+                          setSystemPrompt(event.target.value)
                         }
                       />
                     </Field>
@@ -130,7 +119,7 @@ export function ModelSetting({
                 aria-labelledby="effort-label"
                 aria-valuetext={selectedEffort}
                 value={[efforts.indexOf(selectedEffort)]}
-                onValueChange={([index]) => onEffortChange(efforts[index])}
+                onValueChange={([index]) => setEffort(efforts[index])}
                 min={0}
                 max={efforts.length - 1}
                 step={1}

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react"
-import { isTauri } from "@tauri-apps/api/core"
+import { desktop } from "@/src/lib/api"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { cn } from "@/src/lib/utils"
 
@@ -42,7 +42,6 @@ function CaptionButton({
 
 // Height matches the sidebar header (`h-10` in AppSidebar.tsx).
 export function TitleBar({ children }: { children?: ReactNode }) {
-  const desktop = isTauri()
   const [maximized, setMaximized] = useState(false)
 
   useEffect(() => {
@@ -52,7 +51,7 @@ export function TitleBar({ children }: { children?: ReactNode }) {
     sync()
     const unlisten = win.onResized(sync)
     return () => void unlisten.then((stop) => stop())
-  }, [desktop])
+  }, [])
 
   return (
     <header
