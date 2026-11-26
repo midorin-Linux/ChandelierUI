@@ -1,5 +1,22 @@
-export const efforts = ["off", "low", "medium", "high", "xhigh", "max"] as const
-export type Effort = (typeof efforts)[number]
+import type { ChatPayload_Deserialize, ReasoningEffort } from "../bindings"
+
+export type {
+  CompletionDelta,
+  Message_Serialize as ChatMessage,
+  Model_Serialize as ApiModel,
+} from "../bindings"
+
+export type Effort = ReasoningEffort
+// A `Record` must list every `ReasoningEffort`, so a missing or unknown one fails to compile.
+const effortSet = {
+  off: true,
+  low: true,
+  medium: true,
+  high: true,
+  xhigh: true,
+  max: true,
+} satisfies Record<Effort, true>
+export const efforts = Object.keys(effortSet) as Effort[]
 
 /** Applied to new sessions; an empty model keeps the current one. */
 export interface SessionDefaults {
@@ -10,33 +27,12 @@ export interface SessionDefaults {
   systemPrompt: string
 }
 
-export interface ApiModel {
-  id: string
-  context_length?: number | null
-}
-
-export interface ChatMessage {
-  role: "system" | "user" | "assistant"
-  content: string
-  reasoning?: string
-}
-
-export interface CompletionDelta {
-  content: string
-  reasoning: string
-}
-
-export interface ChatCompletionRequest {
-  model: string
-  messages: Pick<ChatMessage, "role" | "content">[]
-  // The backend maps off to none and max to xhigh on the OpenAI wire.
-  reasoning_effort: Effort
-}
-
-export interface ProviderChatRequest {
-  // The API key never leaves the backend; it is loaded from the keyring by `id`.
-  provider: { id?: string; base_url: string }
-  request: ChatCompletionRequest
+/**
+ * The frontend always sends `base_url` (it is stored with each attempt).
+ * The API key never leaves the backend; it is loaded from the keyring by `id`.
+ */
+export type ProviderChatRequest = ChatPayload_Deserialize & {
+  provider: { base_url: string }
 }
 
 export interface ProviderPreset {

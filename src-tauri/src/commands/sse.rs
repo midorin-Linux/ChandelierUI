@@ -1,3 +1,5 @@
+use crate::error::Error;
+
 pub(super) const MAX_SSE_EVENT_BYTES: usize = 1024 * 1024;
 
 #[derive(Default)]
@@ -13,8 +15,8 @@ impl SseDecoder {
     pub(super) fn feed(
         &mut self,
         bytes: &[u8],
-        mut event: impl FnMut(&[u8]) -> Result<bool, String>,
-    ) -> Result<bool, String> {
+        mut event: impl FnMut(&[u8]) -> Result<bool, Error>,
+    ) -> Result<bool, Error> {
         for &byte in bytes {
             if self.after_cr {
                 self.after_cr = false;
@@ -24,7 +26,9 @@ impl SseDecoder {
             }
             self.event_bytes += 1;
             if self.event_bytes > MAX_SSE_EVENT_BYTES {
-                return Err("Chat provider returned an oversized SSE event.".into());
+                return Err(Error::InvalidResponse(
+                    "Chat provider returned an oversized SSE event.",
+                ));
             }
             if byte == b'\n' || byte == b'\r' {
                 self.after_cr = byte == b'\r';
@@ -42,7 +46,9 @@ impl SseDecoder {
                     }
                 } else {
                     let line = std::str::from_utf8(&self.line).map_err(|_| {
-                        "Chat provider returned invalid UTF-8 in its SSE stream.".to_string()
+                        Error::InvalidResponse(
+                            "Chat provider returned invalid UTF-8 in its SSE stream.",
+                        )
                     })?;
                     let (field, value) = line.split_once(':').unwrap_or((line, ""));
                     if field == "data" {
@@ -62,9 +68,11 @@ impl SseDecoder {
         Ok(false)
     }
 
-    pub(super) fn finish(&self) -> Result<(), String> {
+    pub(super) fn finish(&self) -> Result<(), Error> {
         if !self.line.is_empty() || self.has_data {
-            return Err("Chat provider returned a truncated SSE event.".into());
+            return Err(Error::InvalidResponse(
+                "Chat provider returned a truncated SSE event.",
+            ));
         }
         Ok(())
     }

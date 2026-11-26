@@ -24,6 +24,7 @@ use super::{
     stream::CompletionStream,
     types::{ChatPayload, CompletionDelta, Model, Models, Provider, StreamOptions, WireRequest},
 };
+use crate::error::Error;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const CHUNK_TIMEOUT: Duration = Duration::from_secs(120);
@@ -105,9 +106,11 @@ pub(super) fn http_client_with_timeouts(
     })
 }
 
-pub(super) fn endpoint(base: &str, suffix: &str) -> Result<Url, String> {
+pub(super) fn endpoint(base: &str, suffix: &str) -> Result<Url, Error> {
     let invalid = || {
-        "Invalid provider URL: use HTTP on loopback or HTTPS, without credentials, query, or fragment.".to_string()
+        Error::InvalidInput(
+            "Invalid provider URL: use HTTP on loopback or HTTPS, without credentials, query, or fragment.",
+        )
     };
     let mut url = Url::parse(base).map_err(|_| invalid())?;
     let has_userinfo = base
@@ -243,7 +246,7 @@ async fn connect_stream(
 pub(super) async fn complete(
     client: &HttpClient,
     payload: ChatPayload,
-    on_event: impl FnMut(CompletionDelta) -> Result<(), String>,
+    on_event: impl FnMut(CompletionDelta) -> Result<(), Error>,
 ) -> MeasuredCompletion {
     complete_cancellable(client, payload, std::future::pending(), on_event).await
 }
@@ -252,19 +255,14 @@ pub(super) async fn complete_cancellable(
     client: &HttpClient,
     payload: ChatPayload,
     cancel: impl Future<Output = ()>,
-    mut on_event: impl FnMut(CompletionDelta) -> Result<(), String>,
+    mut on_event: impl FnMut(CompletionDelta) -> Result<(), Error>,
 ) -> MeasuredCompletion {
     let url = match endpoint(
         payload.provider.base_url.as_deref().unwrap_or(""),
         "chat/completions",
     ) {
         Ok(url) => url,
-        Err(error) => {
-            return MeasuredCompletion {
-                error: Some(error),
-                ..Default::default()
-            };
-        }
+        Err(error) => return CompletionStream::default().finish(0.0, Some(error)),
     };
     let chunk_timeout = payload.timeout.unwrap_or(client.chunk_timeout);
     let request = payload.request;
@@ -275,13 +273,12 @@ pub(super) async fn complete_cancellable(
             .iter()
             .any(|message| message.content.trim().is_empty())
     {
-        return MeasuredCompletion {
-            error: Some(
-                "A nonblank model and at least one message with nonblank content are required."
-                    .into(),
-            ),
-            ..Default::default()
-        };
+        return CompletionStream::default().finish(
+            0.0,
+            Some(Error::InvalidInput(
+                "A nonblank model and at least one message with nonblank content are required.",
+            )),
+        );
     }
     let Ok(body) = serde_json::to_vec(&WireRequest {
         model: &request.model,
@@ -292,10 +289,10 @@ pub(super) async fn complete_cancellable(
             include_usage: true,
         },
     }) else {
-        return MeasuredCompletion {
-            error: Some("Could not encode the chat request.".into()),
-            ..Default::default()
-        };
+        return CompletionStream::default().finish(
+            0.0,
+            Some(Error::InvalidInput("Could not encode the chat request.")),
+        );
     };
     let mut stream = CompletionStream::default();
     let started = Instant::now();
@@ -304,7 +301,7 @@ pub(super) async fn complete_cancellable(
     else {
         return stream.finish(
             started.elapsed().as_secs_f64() * 1000.0,
-            Some("Could not reach the chat provider.".into()),
+            Some(Error::InvalidInput("Could not reach the chat provider.")),
         );
     };
     let mut cancel = pin!(cancel);
@@ -313,7 +310,7 @@ pub(super) async fn complete_cancellable(
         () = &mut cancel => {
             return stream.finish(
                 started.elapsed().as_secs_f64() * 1000.0,
-                Some("Generation cancelled.".into()),
+                Some(Error::Cancelled),
             );
         }
         res = timeout(
@@ -324,14 +321,14 @@ pub(super) async fn complete_cancellable(
             Ok(Err(())) => {
                 return stream.finish(
                     started.elapsed().as_secs_f64() * 1000.0,
-                    Some("Could not reach the chat provider.".into()),
+                    Some(Error::Network("Could not reach the chat provider.")),
                 );
             }
             Err(_) => {
                 stream.metrics.timed_out = true;
                 return stream.finish(
                     started.elapsed().as_secs_f64() * 1000.0,
-                    Some("Chat connection timed out.".into()),
+                    Some(Error::Timeout("Chat connection timed out.")),
                 );
             }
         }
@@ -347,7 +344,7 @@ pub(super) async fn complete_cancellable(
         () = &mut cancel => {
             return stream.finish(
                 started.elapsed().as_secs_f64() * 1000.0,
-                Some("Generation cancelled.".into()),
+                Some(Error::Cancelled),
             );
         }
         res = timeout(chunk_timeout, send_fut) => match res {
@@ -355,14 +352,14 @@ pub(super) async fn complete_cancellable(
             Ok(Err(())) => {
                 return stream.finish(
                     started.elapsed().as_secs_f64() * 1000.0,
-                    Some("Could not reach the chat provider.".into()),
+                    Some(Error::Network("Could not reach the chat provider.")),
                 );
             }
             Err(_) => {
                 stream.metrics.timed_out = true;
                 return stream.finish(
                     started.elapsed().as_secs_f64() * 1000.0,
-                    Some("Chat request timed out.".into()),
+                    Some(Error::Timeout("Chat request timed out.")),
                 );
             }
         }
@@ -377,7 +374,7 @@ pub(super) async fn complete_cancellable(
             () = &mut cancel => {
                 break (
                     started.elapsed().as_secs_f64() * 1000.0,
-                    Some("Generation cancelled.".into()),
+                    Some(Error::Cancelled),
                 );
             }
             res = timeout(chunk_timeout, body.frame()) => match res {
@@ -404,7 +401,10 @@ pub(super) async fn complete_cancellable(
                     let error = if status.is_success() {
                         decoder.finish().and_then(|()| stream.validate()).err()
                     } else {
-                        Some(format!("Chat provider returned HTTP {}.", status.as_u16()))
+                        Some(Error::HttpStatus(format!(
+                            "Chat provider returned HTTP {}.",
+                            status.as_u16()
+                        )))
                     };
                     break (elapsed_ms, error);
                 }
@@ -413,9 +413,12 @@ pub(super) async fn complete_cancellable(
                     break (
                         started.elapsed().as_secs_f64() * 1000.0,
                         Some(if status.is_success() {
-                            message.into()
+                            Error::Network(message)
                         } else {
-                            format!("Chat provider returned HTTP {}. {message}", status.as_u16())
+                            Error::HttpStatus(format!(
+                                "Chat provider returned HTTP {}. {message}",
+                                status.as_u16()
+                            ))
                         }),
                     );
                 }
@@ -425,9 +428,12 @@ pub(super) async fn complete_cancellable(
                     break (
                         started.elapsed().as_secs_f64() * 1000.0,
                         Some(if status.is_success() {
-                            message.into()
+                            Error::Timeout(message)
                         } else {
-                            format!("Chat provider returned HTTP {}. {message}", status.as_u16())
+                            Error::HttpStatus(format!(
+                                "Chat provider returned HTTP {}. {message}",
+                                status.as_u16()
+                            ))
                         }),
                     );
                 }
@@ -440,30 +446,34 @@ pub(super) async fn complete_cancellable(
 pub(super) async fn fetch_models(
     client: &HttpClient,
     provider: Provider,
-) -> Result<Vec<Model>, String> {
+) -> Result<Vec<Model>, Error> {
     let url = endpoint(provider.base_url.as_deref().unwrap_or(""), "models")?;
+    let transport = |error: reqwest::Error| {
+        if error.is_timeout() {
+            Error::Timeout("Model list request timed out.")
+        } else {
+            Error::Network("Could not reach the model provider.")
+        }
+    };
     let response = with_auth(client.models.get(url), provider.api_key.as_deref())
         .send()
         .await
-        .map_err(|error| {
-            if error.is_timeout() {
-                "Model list request timed out.".to_string()
-            } else {
-                "Could not reach the model provider.".to_string()
-            }
-        })?;
+        .map_err(transport)?;
     if !response.status().is_success() {
-        return Err(format!(
+        return Err(Error::HttpStatus(format!(
             "Model provider returned HTTP {}.",
             response.status().as_u16()
-        ));
+        )));
     }
-    let models: Models = response
-        .json()
-        .await
-        .map_err(|_| "Model provider returned an invalid JSON model list.".to_string())?;
+    // Read and parse separately: reqwest reports any body read failure inside `json()` as a decode error.
+    let body = response.bytes().await.map_err(transport)?;
+    let models: Models = serde_json::from_slice(&body).map_err(|_| {
+        Error::InvalidResponse("Model provider returned an invalid JSON model list.")
+    })?;
     if models.data.iter().any(|model| model.id.trim().is_empty()) {
-        return Err("Model provider returned a blank model ID.".into());
+        return Err(Error::InvalidResponse(
+            "Model provider returned a blank model ID.",
+        ));
     }
     Ok(models.data)
 }

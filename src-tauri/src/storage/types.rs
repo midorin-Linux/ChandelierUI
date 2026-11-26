@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use specta::Type;
 use sqlx::FromRow;
 
 use super::StorageError;
 use crate::types::ReasoningEffort;
 
 /// Nodes are user or assistant only; the system prompt is a session field.
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum NodeRole {
     User,
@@ -16,7 +17,7 @@ pub enum NodeRole {
 }
 
 /// An immutable message in the session tree. `parent_id` is `null` for a root.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Type)]
 pub struct MessageNode {
     pub id: String,
     pub parent_id: Option<String>,
@@ -28,7 +29,7 @@ pub struct MessageNode {
 }
 
 /// `sessions.data` at `schema_version` 2.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Type)]
 pub struct SessionData {
     pub model: String,
     pub reasoning_effort: ReasoningEffort,
@@ -80,7 +81,7 @@ impl SessionData {
     }
 }
 
-#[derive(Debug, Clone, Serialize, FromRow, PartialEq)]
+#[derive(Debug, Clone, Serialize, FromRow, PartialEq, Type)]
 pub struct SessionSummary {
     pub id: String,
     pub title: String,
@@ -88,7 +89,7 @@ pub struct SessionSummary {
     pub updated_at: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct LoadedSession {
     pub summary: SessionSummary,
     pub data: SessionData,

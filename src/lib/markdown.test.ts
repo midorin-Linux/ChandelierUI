@@ -1,29 +1,45 @@
-import { createServer } from "vite"
+import assert from "node:assert/strict"
+import { after, before, test } from "node:test"
+import { createServer, type ViteDevServer } from "vite"
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 
-function assert(condition: boolean, message: string): void {
-  if (!condition) throw new Error(message)
-}
+let server: ViteDevServer
+let render: (content: string, streaming?: boolean) => string
+let urlTransform: typeof import("./markdown.ts").urlTransform
+let code: typeof import("./codeHighlighter.ts").code
 
 // Load the real TSX component through Vite (honours the "@/" alias).
-const server = await createServer({
-  configFile: false,
-  appType: "custom",
-  server: { middlewareMode: true },
-  resolve: { tsconfigPaths: true },
-  logLevel: "silent",
-})
-try {
+before(async () => {
+  server = await createServer({
+    configFile: false,
+    appType: "custom",
+    server: { middlewareMode: true },
+    resolve: { tsconfigPaths: true },
+    logLevel: "silent",
+  })
   const { MarkdownRenderer } = (await server.ssrLoadModule(
     "/src/components/MarkdownRenderer.tsx"
   )) as typeof import("../components/MarkdownRenderer.tsx")
-  const { urlTransform } = (await server.ssrLoadModule(
+  ;({ urlTransform } = (await server.ssrLoadModule(
     "/src/lib/markdown.ts"
-  )) as typeof import("./markdown.ts")
-  const render = (content: string) =>
-    renderToStaticMarkup(createElement(MarkdownRenderer, { content }))
+  )) as typeof import("./markdown.ts"))
+  ;({ code } = (await server.ssrLoadModule(
+    "/src/lib/codeHighlighter.ts"
+  )) as typeof import("./codeHighlighter.ts"))
+  render = (content, streaming) =>
+    renderToStaticMarkup(
+      createElement(MarkdownRenderer, { content, streaming })
+    )
+})
+after(() => server?.close())
 
+// Streamdown's code block: highlighted tokens arrive later, plain lines first.
+const codeBlockWith = (html: string, text: string) =>
+  html.includes('data-streamdown="code-block"') &&
+  html.includes(`>${text}</span></span></code></pre>`)
+
+test("rendering", () => {
   // Rendering
   const rich = render(
     "# T\n\n- [x] done\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n> q\n\n~~s~~\n\n```ts\nconst x = 1\n```"
@@ -35,9 +51,43 @@ try {
     rich.includes("<blockquote>") && rich.includes("<del>"),
     "quote/strike"
   )
-  assert(rich.includes("hljs-keyword"), "labeled code highlighted")
-  assert(!render("```\nconst x = 1\n```").includes("hljs-"), "no auto-detect")
+  assert(
+    codeBlockWith(rich, "const x = 1") && rich.includes('data-language="ts"'),
+    "code block with language"
+  )
+  assert(
+    rich.includes('data-streamdown="code-block-copy-button"') &&
+      !rich.includes("code-block-download-button"),
+    "code copy, no download"
+  )
+})
 
+// A failed highlight only logs, so the timeout is the failure.
+test("code highlighting", { timeout: 10_000 }, async (t) => {
+  // Shiki's JavaScript regex engine: the app's CSP allows no WebAssembly.
+  const { WebAssembly } = globalThis
+  t.after(() => void Object.assign(globalThis, { WebAssembly }))
+  Object.assign(globalThis, { WebAssembly: undefined })
+  const result = await new Promise<
+    NonNullable<ReturnType<typeof code.highlight>>
+  >((resolve) => {
+    const cached = code.highlight(
+      { code: "const x = 1", language: "ts", themes: code.getThemes() },
+      resolve
+    )
+    if (cached) resolve(cached)
+  })
+  const colors = new Set(
+    result.tokens.flat().map((token) => token.htmlStyle?.color)
+  )
+  assert(colors.size > 1, "labeled code highlighted")
+  assert(
+    code.supportsLanguage("ts") && !code.supportsLanguage(""),
+    "aliases resolve; unlabeled fences are not guessed"
+  )
+})
+
+test("math", () => {
   // The real pipeline renders both LLM delimiter styles, not code lookalikes.
   for (const source of ["$x^2$", String.raw`\(x^2\)`]) {
     const math = render(`Before ${source} after`)
@@ -50,7 +100,7 @@ try {
       math.includes("<math") && math.includes("katex-html"),
       "accessible math and visual output"
     )
-    assert(!math.includes("hljs"), "math is not syntax highlighted")
+    assert(!math.includes("code-block"), "math is not a code block")
   }
   for (const source of ["$$\nx^2\n$$", String.raw`\[x^2\]`, "$$x^2$$"]) {
     const math = render(source)
@@ -66,7 +116,8 @@ try {
   const escapedMath = literalMath.replace("<tag>", "&lt;tag&gt;")
   const inlineCode = render("`" + literalMath + "`")
   assert(
-    inlineCode.includes(`<code>${escapedMath}</code>`),
+    /<code[^>]*>/.test(inlineCode) &&
+      inlineCode.includes(`>${escapedMath}</code>`),
     "inline code contents unchanged"
   )
   assert(!inlineCode.includes("katex"), "inline code is not math")
@@ -83,15 +134,14 @@ try {
       `fenced ${language || "plain"} code is not math`
     )
     assert(
-      /<pre><code[^>]*>/.test(code) &&
-        code.includes(`${escapedMath}\n</code></pre>`),
+      codeBlockWith(code, escapedMath),
       `fenced ${language || "plain"} code contents unchanged`
     )
   }
   const indentedCode = render("    " + literalMath)
   assert(!indentedCode.includes("katex"), "indented code is not math")
   assert(
-    indentedCode.includes(`${escapedMath}\n</code></pre>`),
+    codeBlockWith(indentedCode, escapedMath),
     "indented code contents unchanged"
   )
   const currency = render("Costs $5 and $10.")
@@ -130,47 +180,65 @@ try {
       !/style="[^"]*1000em/.test(hugeMath),
     "rule dimensions are capped at ten em"
   )
-  // Security
-  const html = render(
-    '<script>alert(1)</script><img src=x onerror="alert(1)">hi'
-  )
-  assert(!/<script|<img|onerror/i.test(html), "raw HTML is not rendered")
-  const js = render("[x](javascript:alert(1))")
-  assert(
-    !js.includes("javascript:") && !js.includes("href"),
-    "javascript: stripped"
-  )
-  assert(!render("[x](data:text/html,hi)").includes("href"), "data: stripped")
-  assert(!render("[x](/rel)").includes("href"), "relative stripped")
-  assert(
-    render("[x](https://a.test)").includes('href="https://a.test"'),
-    "https ok"
-  )
-  assert(
-    render("[x](mailto:a@b.test)").includes("mailto:a@b.test"),
-    "mailto ok"
-  )
-  assert(urlTransform("java\nscript:alert(1)") === "", "control-char scheme")
-  const img = render("![cat](https://evil.test/p.png)")
-  assert(
-    !img.includes("<img") && !img.includes("evil.test"),
-    "images not loaded"
-  )
-  assert(img.includes("cat"), "image alt shown")
-  const unsafeMath = render(
-    String.raw`$\href{https://evil.test}{open}+\href{javascript:alert(1)}{run}+\includegraphics{https://evil.test/p.png}$`
-  )
-  assert(
-    !/<a\b|<img\b|\b(?:href|src)=/i.test(unsafeMath),
-    "math cannot create links or images"
-  )
-  assert(
-    !render(String.raw`$\global\def\leaked{\text{secret}}$ $\leaked$`).includes(
-      "<mtext>secret</mtext>"
-    ),
-    "no cross-expression macro state"
-  )
+})
 
+test("security", () => {
+  // Security, for finished and streaming (remend-repaired) messages
+  for (const streaming of [false, true]) {
+    const show = (content: string) => render(content, streaming)
+    const html = show(
+      '<script>alert(1)</script><img src=x onerror="alert(1)">hi'
+    )
+    // Without rehype-raw, Streamdown keeps raw HTML as escaped text.
+    assert(
+      !/<script|<img/i.test(html) && html.includes("&lt;script&gt;"),
+      "raw HTML is not rendered"
+    )
+    const js = show("[x](javascript:alert(1))")
+    assert(
+      !js.includes("javascript:") && !js.includes("href"),
+      "javascript: stripped"
+    )
+    assert(!show("[x](data:text/html,hi)").includes("href"), "data: stripped")
+    assert(!show("[x](/rel)").includes("href"), "relative stripped")
+    assert(
+      show("[x](https://a.test)").includes('href="https://a.test"'),
+      "https ok"
+    )
+    assert(
+      show("[x](mailto:a@b.test)").includes("mailto:a@b.test"),
+      "mailto ok"
+    )
+    assert(urlTransform("java\nscript:alert(1)") === "", "control-char scheme")
+    const img = show("![cat](https://evil.test/p.png)")
+    assert(
+      !img.includes("<img") && !img.includes("evil.test"),
+      "images not loaded"
+    )
+    assert(img.includes("cat"), "image alt shown")
+    const unsafeMath = show(
+      String.raw`$\href{https://evil.test}{open}+\href{javascript:alert(1)}{run}+\includegraphics{https://evil.test/p.png}$`
+    )
+    assert(
+      !/<a\b|<img\b|\b(?:href|src)=/i.test(unsafeMath),
+      "math cannot create links or images"
+    )
+    assert(
+      !show(String.raw`$\global\def\leaked{\text{secret}}$ $\leaked$`).includes(
+        "<mtext>secret</mtext>"
+      ),
+      "no cross-expression macro state"
+    )
+    const partialImage = show("![a](https://x")
+    assert(
+      !partialImage.includes("<img") &&
+        (!streaming || !partialImage.includes("https://x")),
+      "unfinished image not loaded"
+    )
+  }
+})
+
+test("incomplete or streaming input does not throw", () => {
   // Incomplete / streaming input must not throw
   for (const partial of [
     "```ts\nconst x =",
@@ -180,8 +248,20 @@ try {
     "```unknownlang\nfoo",
   ]) {
     render(partial)
+    render(partial, true)
   }
-  assert(render("```ts\nconst x =").includes("<pre>"), "unclosed fence renders")
+  assert(
+    codeBlockWith(render("```ts\nconst x =", true), "const x ="),
+    "unclosed fence renders"
+  )
+  assert(
+    render("**bold", true).includes("<strong>bold</strong>"),
+    "streaming repairs unfinished emphasis"
+  )
+  assert(
+    render("[x](http", true).includes("<span>x</span>"),
+    "streaming hides an unfinished link target"
+  )
   for (const partial of [
     "$",
     "$x",
@@ -191,11 +271,12 @@ try {
     String.raw`\[x + 1`,
     String.raw`\(x + 1`,
   ]) {
-    const streamed = render(partial)
-    assert(
-      !streamed.includes("katex"),
-      `incomplete math stays literal: ${partial}`
-    )
+    for (const streaming of [false, true]) {
+      assert(
+        !render(partial, streaming).includes("katex"),
+        `incomplete math stays literal: ${partial}`
+      )
+    }
   }
   assert(
     render("Before $$x + 1\n\nFollowing prose").includes(
@@ -203,6 +284,4 @@ try {
     ),
     "incomplete display math does not swallow following prose"
   )
-} finally {
-  await server.close()
-}
+})

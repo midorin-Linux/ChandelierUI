@@ -6,6 +6,7 @@ use super::{
     metrics::{ChunkIntervals, CompletionMetrics, MeasuredCompletion},
     types::{CompletionDelta, Message, Role},
 };
+use crate::error::Error;
 
 #[derive(Deserialize)]
 struct StreamEvent<'a> {
@@ -116,19 +117,22 @@ impl CompletionStream {
         &mut self,
         data: &[u8],
         elapsed_ms: f64,
-        on_event: &mut impl FnMut(CompletionDelta) -> Result<(), String>,
-    ) -> Result<bool, String> {
+        on_event: &mut impl FnMut(CompletionDelta) -> Result<(), Error>,
+    ) -> Result<bool, Error> {
         if data == b"[DONE]" {
             return Ok(true);
         }
-        let event: StreamEvent<'_> = serde_json::from_slice(data)
-            .map_err(|_| "Chat provider returned an invalid JSON stream event.".to_string())?;
+        let event: StreamEvent<'_> = serde_json::from_slice(data).map_err(|_| {
+            Error::InvalidResponse("Chat provider returned an invalid JSON stream event.")
+        })?;
         if event.error.is_some() {
-            return Err("Chat provider returned a stream error.".into());
+            return Err(Error::ProviderReported(
+                "Chat provider returned a stream error.",
+            ));
         }
         let choice = event.choices.and_then(|choices| choices.0);
         if choice.is_none() && event.usage.is_none() && event.timings.is_none() {
-            return Err("Chat provider returned no choices.".into());
+            return Err(Error::InvalidResponse("Chat provider returned no choices."));
         }
         if let Some(usage) = event.usage {
             if usage.prompt_tokens.is_some() {
@@ -168,7 +172,9 @@ impl CompletionStream {
         }
         if let Some(choice) = choice {
             if choice.index != 0 {
-                return Err("Chat provider returned an unexpected choice index.".into());
+                return Err(Error::InvalidResponse(
+                    "Chat provider returned an unexpected choice index.",
+                ));
             }
             if choice
                 .delta
@@ -176,7 +182,9 @@ impl CompletionStream {
                 .as_deref()
                 .is_some_and(|role| role != "assistant")
             {
-                return Err("Chat provider did not return an assistant message.".into());
+                return Err(Error::InvalidResponse(
+                    "Chat provider did not return an assistant message.",
+                ));
             }
             if choice
                 .delta
@@ -184,7 +192,9 @@ impl CompletionStream {
                 .as_deref()
                 .is_some_and(|text| !text.trim().is_empty())
             {
-                return Err("Chat provider refused the request.".into());
+                return Err(Error::ProviderReported(
+                    "Chat provider refused the request.",
+                ));
             }
             let content = choice.delta.content.as_deref().unwrap_or("");
             let reasoning = choice
@@ -197,7 +207,9 @@ impl CompletionStream {
             if self.metrics.finish_reason.is_some()
                 && (!content.is_empty() || !reasoning.is_empty())
             {
-                return Err("Chat provider returned a choice after its finish reason.".into());
+                return Err(Error::InvalidResponse(
+                    "Chat provider returned a choice after its finish reason.",
+                ));
             }
             if !content.is_empty() || !reasoning.is_empty() {
                 self.metrics.ttft_ms.get_or_insert(elapsed_ms);
@@ -211,10 +223,14 @@ impl CompletionStream {
             }
             if let Some(reason) = choice.finish_reason {
                 if reason.trim().is_empty() {
-                    return Err("Chat provider returned an empty finish reason.".into());
+                    return Err(Error::InvalidResponse(
+                        "Chat provider returned an empty finish reason.",
+                    ));
                 }
                 if &*reason == "error" {
-                    return Err("Chat provider returned an error finish reason.".into());
+                    return Err(Error::ProviderReported(
+                        "Chat provider returned an error finish reason.",
+                    ));
                 }
                 if self
                     .metrics
@@ -222,7 +238,9 @@ impl CompletionStream {
                     .as_deref()
                     .is_some_and(|prev| prev != &*reason)
                 {
-                    return Err("Chat provider returned a choice after its finish reason.".into());
+                    return Err(Error::InvalidResponse(
+                        "Chat provider returned a choice after its finish reason.",
+                    ));
                 }
                 if self.metrics.finish_reason.is_none() {
                     self.metrics.finish_reason = Some(reason.0.into_owned());
@@ -232,21 +250,21 @@ impl CompletionStream {
         Ok(false)
     }
 
-    pub(super) fn validate(&self) -> Result<(), String> {
+    pub(super) fn validate(&self) -> Result<(), Error> {
         if self.metrics.finish_reason.is_none() {
-            return Err(
-                "Chat provider returned a truncated completion (missing finish_reason).".into(),
-            );
+            return Err(Error::InvalidResponse(
+                "Chat provider returned a truncated completion (missing finish_reason).",
+            ));
         }
         if self.text.trim().is_empty() {
-            return Err(
-                "Chat provider returned no assistant text (empty or tool-only response).".into(),
-            );
+            return Err(Error::InvalidResponse(
+                "Chat provider returned no assistant text (empty or tool-only response).",
+            ));
         }
         Ok(())
     }
 
-    pub(super) fn finish(mut self, elapsed_ms: f64, error: Option<String>) -> MeasuredCompletion {
+    pub(super) fn finish(mut self, elapsed_ms: f64, error: Option<Error>) -> MeasuredCompletion {
         self.metrics.e2e_ms = elapsed_ms;
         self.metrics.decode_ms = self
             .metrics
@@ -278,7 +296,8 @@ impl CompletionStream {
                 content: self.text,
                 reasoning: self.reasoning,
             }),
-            error,
+            error_kind: error.as_ref().map(Error::kind),
+            error: error.map(|error| error.to_string()),
             metrics: self.metrics,
         }
     }
