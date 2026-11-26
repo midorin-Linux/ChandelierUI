@@ -75,6 +75,18 @@ impl Error {
             Self::Channel => ErrorKind::Channel,
         }
     }
+
+    fn log(&self) {
+        let kind = self.kind();
+        match self {
+            // These messages can quote stored or submitted data (presets with base
+            // URLs, session JSON with message text), which must not reach the log.
+            Self::InvalidPresets(_) | Self::Storage(StorageError::Invalid(_)) => {
+                tracing::warn!(?kind, "command failed")
+            }
+            _ => tracing::warn!(?kind, error = %self, "command failed"),
+        }
+    }
 }
 
 /// The wire shape of `Error`; its sources (`sqlx::Error`, ...) are not `Serialize`.
@@ -86,6 +98,9 @@ pub(crate) struct IpcError {
 
 impl Serialize for Error {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Tauri serializes every command error it returns, so this is the one
+        // place all of them pass through on their way to the webview.
+        self.log();
         IpcError {
             kind: self.kind(),
             message: self.to_string(),

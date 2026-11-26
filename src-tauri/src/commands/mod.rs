@@ -19,7 +19,10 @@ use sqlx::SqlitePool;
 use tauri::{State, ipc::Channel};
 use types::{ChatPayload, CompletionDelta, Model, Provider};
 
-use crate::{error::Error, storage::Db};
+use crate::{
+    error::{Error, ErrorKind},
+    storage::Db,
+};
 
 struct CancelGuard<'a>(&'a HttpClient, u64);
 
@@ -46,12 +49,35 @@ pub async fn chat_completion(
             std::future::pending::<()>().await;
         }
     };
-    Ok(
-        complete_cancellable(client.inner(), payload, cancel, |delta| {
-            on_event.send(delta).map_err(|_| Error::Channel)
-        })
-        .await,
-    )
+    let provider = payload.provider.id.clone();
+    let model = payload.request.model.clone();
+    let completion = complete_cancellable(client.inner(), payload, cancel, |delta| {
+        on_event.send(delta).map_err(|_| Error::Channel)
+    })
+    .await;
+    let metrics = &completion.metrics;
+    match completion.error_kind {
+        None | Some(ErrorKind::Cancelled) => tracing::info!(
+            provider = provider.as_deref(),
+            model,
+            e2e_ms = metrics.e2e_ms,
+            http_status = metrics.http_status,
+            finish_reason = metrics.finish_reason,
+            error_kind = ?completion.error_kind,
+            "chat completion finished"
+        ),
+        Some(kind) => tracing::warn!(
+            provider = provider.as_deref(),
+            model,
+            e2e_ms = metrics.e2e_ms,
+            http_status = metrics.http_status,
+            finish_reason = metrics.finish_reason,
+            error_kind = ?kind,
+            error = completion.error,
+            "chat completion failed"
+        ),
+    }
+    Ok(completion)
 }
 
 /// The saved response timeout; `None` when unset or outside 1..=3600 seconds.
@@ -67,6 +93,7 @@ async fn response_timeout(pool: &SqlitePool) -> Result<Option<Duration>, Error> 
 #[tauri::command]
 #[specta::specta]
 pub fn cancel_chat(client: State<'_, HttpClient>) {
+    tracing::info!("chat cancel requested");
     client.cancel_active();
 }
 
