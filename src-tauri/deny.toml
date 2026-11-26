@@ -5,7 +5,6 @@
 # Each ignore below is tracked so it can be dropped once the upstream fix lands.
 # Re-check them when running `cargo update` or bumping sqlx / tauri-plugin-opener.
 ignore = [
-    { id = "RUSTSEC-2026-0459", reason = "libsqlite3-sys 0.30.1 bundles SQLite < 3.54.0; fix is in libsqlite3-sys >= 0.39 but sqlx 0.8.6 pins ^0.30.1. Only reachable when opening a crafted database/-wal pair; the app opens only its own local database. Drop when sqlx supports a patched libsqlite3-sys." },
     { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained; transitive via tauri-plugin-opener -> zbus (Linux only). No safe upgrade available." },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained; transitive via tauri-plugin-opener -> zbus (Linux only). No safe upgrade available." },
     { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained; transitive via tauri-plugin-opener -> zbus (Linux only). No safe upgrade available." },
