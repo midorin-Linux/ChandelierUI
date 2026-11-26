@@ -1,6 +1,5 @@
 import { useState } from "react"
 import { ModelSetting } from "@/src/components/ModelSetting"
-import type { ModelSettingProps } from "@/src/components/ModelSetting"
 import { Button } from "@/src/components/ui/button"
 import { Dialog, DialogTrigger } from "@/src/components/ui/dialog"
 import { Field, FieldGroup } from "@/src/components/ui/field"
@@ -11,25 +10,29 @@ import {
   InputGroupTextarea,
 } from "@/src/components/ui/input-group"
 import { isSubmitEnter } from "@/src/lib/utils"
+import {
+  cancelCompletion,
+  sendMessage as send,
+  useBusy,
+  useChatContext,
+  useChatStore,
+  useSession,
+} from "@/src/stores/chat"
 
 export function MessageBox({
-  onSend,
-  onCancel,
-  isPending,
-  disabled,
-  ...settings
-}: ModelSettingProps & {
-  onSend: (content: string) => boolean
-  onCancel: () => void
-  isPending: boolean
-  /** Switching or restoring a session: sending is off but the draft is kept. */
-  disabled: boolean
+  onOpenProviderSettings,
+}: {
+  onOpenProviderSettings: () => void
 }) {
-  const { selectedEffort, selectedModel } = settings
+  const { selectedModel } = useChatContext()
+  const selectedEffort = useSession((s) => s.data.reasoning_effort)
+  const isPending = useChatStore((s) => s.stream.isPending)
+  // Switching or restoring a session: sending is off but the draft is kept.
+  const disabled = useBusy()
   const [draft, setDraft] = useState("")
   function sendMessage() {
     if (isPending || disabled || !draft.trim()) return
-    if (onSend(draft)) setDraft("")
+    if (send(draft)) setDraft("")
   }
 
   return (
@@ -48,7 +51,7 @@ export function MessageBox({
                   </span>
                 </Button>
               </DialogTrigger>
-              <ModelSetting {...settings} />
+              <ModelSetting onOpenProviderSettings={onOpenProviderSettings} />
             </Dialog>
           </div>
           <InputGroup>
@@ -75,7 +78,7 @@ export function MessageBox({
                   <InputGroupButton
                     variant="destructive"
                     size="sm"
-                    onClick={onCancel}
+                    onClick={() => void cancelCompletion()}
                   >
                     Cancel
                   </InputGroupButton>

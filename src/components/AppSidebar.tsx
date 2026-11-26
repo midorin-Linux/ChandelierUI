@@ -35,27 +35,20 @@ import {
   SidebarTrigger,
 } from "@/src/components/ui/sidebar"
 import { isSubmitEnter } from "@/src/lib/utils"
+import {
+  deleteSession as onDelete,
+  newSession as onNew,
+  openSession as onSelect,
+  renameSession as onRename,
+  useBusy,
+  useSession,
+} from "@/src/stores/chat"
 import type { SessionSummary } from "@/src/types/session"
 
-export function AppSidebar({
-  sessions,
-  activeId,
-  disabled,
-  onNew,
-  onSelect,
-  onRename,
-  onDelete,
-  onOpenSettings,
-}: {
-  sessions: SessionSummary[]
-  activeId: string | null
-  disabled: boolean
-  onNew: () => void
-  onSelect: (id: string) => void
-  onRename: (id: string, title: string) => void
-  onDelete: (id: string) => void
-  onOpenSettings: () => void
-}) {
+export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
+  const sessions = useSession((s) => s.sessions)
+  const activeId = useSession((s) => s.activeId)
+  const disabled = useBusy()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
 

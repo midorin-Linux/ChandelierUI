@@ -23,33 +23,28 @@ import {
 import { awaitsReply } from "@/src/lib/retry"
 import { children, siblings } from "@/src/lib/sessionTree"
 import { isSubmitEnter } from "@/src/lib/utils"
-import { useChatStore } from "@/src/stores/chat"
+import {
+  editMessage as onEdit,
+  regenerate as onRegenerate,
+  retry as onRetry,
+  switchBranch as onSwitch,
+  useBusy,
+  useChatContext,
+  useChatStore,
+  useMessages,
+  useSession,
+} from "@/src/stores/chat"
 import type { ChatMessage } from "@/src/types/chat"
 import type { MessageNode } from "@/src/types/session"
 
-export function ChatUI({
-  messages,
-  allMessages,
-  busy,
-  error,
-  canSend,
-  onRetry,
-  onRegenerate,
-  onEdit,
-  onSwitch,
-}: {
-  messages: readonly MessageNode[]
-  /** Every node in the session, to find siblings. */
-  allMessages: readonly MessageNode[]
-  /** Sending, switching or restoring: hides the missing-reply notice. */
-  busy: boolean
-  error: string | null
-  canSend: boolean
-  onRetry: () => void
-  onRegenerate: (message: MessageNode) => void
-  onEdit: (message: MessageNode, content: string) => void
-  onSwitch: (nodeId: string) => void
-}) {
+export function ChatUI() {
+  const messages = useMessages()
+  // Every node in the session, to find siblings.
+  const allMessages = useSession((s) => s.data.messages)
+  // Sending, switching or restoring: hides the missing-reply notice.
+  const busy = useBusy()
+  const error = useChatStore((s) => s.error)
+  const { canSend } = useChatContext()
   // Subscribed here, not in the parent, so only the conversation re-renders per delta.
   const partialMessage = useChatStore((s) => s.stream.message)
   const isPending = useChatStore((s) => s.stream.isPending)

@@ -10,34 +10,7 @@ import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
 import { settingsWriter } from "@/src/lib/api"
-import {
-  addPreset,
-  buildPayload,
-  cancelCompletion,
-  deleteSession,
-  editMessage,
-  init,
-  newSession,
-  openSession,
-  refreshModels,
-  regenerate,
-  removePreset,
-  renamePreset,
-  renameSession,
-  retry,
-  selectModel,
-  selectProvider,
-  sendMessage,
-  setEffort,
-  setProviderUrl,
-  setSystemPrompt,
-  switchBranch,
-  useBusy,
-  useChatContext,
-  useChatStore,
-  useMessages,
-  useSession,
-} from "@/src/stores/chat"
+import { init, useChatContext } from "@/src/stores/chat"
 import { loadModels } from "@/src/stores/models"
 import { useSettingsStore } from "@/src/stores/settings"
 
@@ -51,38 +24,13 @@ function App() {
 }
 
 function Chat() {
-  const presets = useSettingsStore((s) => s.presets)
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
-  const context = useChatContext()
-  const {
-    providerId: activeId,
-    providerMissing,
-    providerUrl,
-    models,
-    modelsLoading,
-    selectedModel,
-    modelsStatus,
-    canSend,
-  } = context
+  const { providerId, providerUrl, providerMissing } = useChatContext()
   useEffect(
-    () => void loadModels(providerUrl, activeId),
-    [providerUrl, activeId]
+    () => void loadModels(providerUrl, providerId),
+    [providerUrl, providerId]
   )
-  const sessions = useSession((s) => s.sessions)
-  const activeSessionId = useSession((s) => s.activeId)
-  const data = useSession((s) => s.data)
-  const attempts = useSession((s) => s.attempts)
-  const messages = useMessages()
-  const isPending = useChatStore((s) => s.stream.isPending)
-  const error = useChatStore((s) => s.error)
-  const busy = useBusy()
-  // The URL being typed belongs to one preset, so switching presets drops it.
-  const [urlDraft, setUrlDraft] = useState({ id: activeId, value: providerUrl })
-  const providerUrlInput =
-    urlDraft.id === activeId ? urlDraft.value : providerUrl
-  const setProviderUrlInput = (value: string) =>
-    setUrlDraft({ id: activeId, value })
 
   function openProviderSettings() {
     setSettingsTab("provider")
@@ -92,70 +40,23 @@ function Chat() {
   return (
     <>
       <SidebarProvider>
-        <AppSidebar
-          sessions={sessions}
-          activeId={activeSessionId}
-          disabled={busy}
-          onNew={newSession}
-          onSelect={openSession}
-          onRename={renameSession}
-          onDelete={deleteSession}
-          onOpenSettings={() => setAppSettingsOpen(true)}
-        />
+        <AppSidebar onOpenSettings={() => setAppSettingsOpen(true)} />
         <Dialog
           open={appSettingsOpen}
           onOpenChange={(open) => {
             setAppSettingsOpen(open)
-            if (open) return
-            // Escape/close unmounts the URL field without a blur.
-            const url = providerUrlInput.trim()
-            if (url !== providerUrl) setProviderUrl(url)
-            void settingsWriter.flush()
+            if (!open) void settingsWriter.flush()
           }}
         >
-          <AppSetting
-            tab={settingsTab}
-            onTabChange={setSettingsTab}
-            models={models}
-            provider={{
-              presets,
-              activeId,
-              onSelectPreset: selectProvider,
-              onAddPreset: addPreset,
-              onRemovePreset: removePreset,
-              onRenamePreset: renamePreset,
-              providerUrl,
-              setProviderUrl,
-              providerUrlInput,
-              setProviderUrlInput,
-              models,
-              modelsLoading,
-              modelsStatus,
-              onRefreshModels: refreshModels,
-            }}
-          />
+          <AppSetting tab={settingsTab} onTabChange={setSettingsTab} />
         </Dialog>
         <div className="flex h-screen min-w-0 flex-1 justify-center">
           <div className="flex min-h-0 w-full flex-col">
             <TitleBar>
-              <Analysis
-                payload={buildPayload(messages, context, data)}
-                attempts={attempts}
-                isPending={isPending}
-              />
+              <Analysis />
             </TitleBar>
             <div className="relative flex min-h-0 w-full flex-1 flex-col">
-              <ChatUI
-                messages={messages}
-                allMessages={data.messages}
-                busy={busy}
-                error={error}
-                canSend={canSend}
-                onRetry={retry}
-                onRegenerate={regenerate}
-                onEdit={editMessage}
-                onSwitch={switchBranch}
-              />
+              <ChatUI />
               <div
                 className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
                 ref={(node) => {
@@ -179,23 +80,7 @@ function Chat() {
                     current provider instead.
                   </p>
                 )}
-                <MessageBox
-                  models={models}
-                  modelsLoading={modelsLoading}
-                  modelsStatus={modelsStatus}
-                  onRefreshModels={refreshModels}
-                  onOpenProviderSettings={openProviderSettings}
-                  selectedModel={selectedModel}
-                  onModelChange={selectModel}
-                  selectedEffort={data.reasoning_effort}
-                  onEffortChange={setEffort}
-                  systemPrompt={data.system_prompt}
-                  onSystemPromptChange={setSystemPrompt}
-                  onSend={sendMessage}
-                  onCancel={() => void cancelCompletion()}
-                  isPending={isPending}
-                  disabled={busy}
-                />
+                <MessageBox onOpenProviderSettings={openProviderSettings} />
               </div>
             </div>
           </div>

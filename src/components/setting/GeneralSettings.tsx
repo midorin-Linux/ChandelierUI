@@ -10,11 +10,13 @@ import {
   ComboboxList,
 } from "@/src/components/ui/combobox"
 import { Textarea } from "@/src/components/ui/textarea"
-import { efforts, type ApiModel } from "@/src/types/chat"
+import { efforts } from "@/src/types/chat"
+import { useChatContext } from "@/src/stores/chat"
 import { setDefaults, useSettingsStore } from "@/src/stores/settings"
 import { Separator } from "@/src/components/ui/separator"
 
-export function GeneralSettings({ models }: { models: ApiModel[] }) {
+export function GeneralSettings() {
+  const { models } = useChatContext()
   const defaults = useSettingsStore((s) => s.defaults)
   const { theme, setTheme } = useTheme()
   // A body-level portal counts as outside the Radix dialog, so clicks never select.
