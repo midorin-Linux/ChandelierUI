@@ -3,6 +3,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/noto-sans";
+@source "../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -134,21 +135,11 @@
 }
 
 /* Markdown rendering. Colors come from the design tokens above, so light/dark
-   switch automatically; only the syntax hues are defined here. */
+   switch automatically; code colors come from Shiki's light/dark themes. */
 .markdown-body {
-  --md-keyword: oklch(0.47 0.17 295);
-  --md-string: oklch(0.46 0.12 150);
-  --md-number: oklch(0.52 0.15 50);
-  --md-title: oklch(0.47 0.15 255);
   @apply min-w-0 text-[0.875rem] leading-[1.65] wrap-break-word;
   text-wrap: pretty;
   line-break: strict;
-}
-.dark .markdown-body {
-  --md-keyword: oklch(0.8 0.12 295);
-  --md-string: oklch(0.82 0.12 150);
-  --md-number: oklch(0.82 0.11 60);
-  --md-title: oklch(0.8 0.1 250);
 }
 .markdown-body > :first-child {
   @apply mt-0;
@@ -162,7 +153,7 @@
 .markdown-body ul,
 .markdown-body ol,
 .markdown-body blockquote,
-.markdown-body pre,
+.markdown-body [data-streamdown="code-block"],
 .markdown-body .markdown-table {
   @apply my-3;
 }
@@ -262,13 +253,15 @@
   @apply mx-auto my-6 border-border;
 }
 
-/* Code blocks */
-.markdown-body pre {
-  @apply overflow-x-auto rounded-lg border border-border bg-background px-4 py-3.5 font-mono text-[0.84rem] leading-[1.65];
-  tab-size: 2;
+/* Code blocks: Streamdown draws the frame, header and copy button. Its inline
+   `content-visibility: auto` makes off-screen blocks guess their height, which
+   jitters the virtualized list as they render; Virtuoso already culls rows. */
+.markdown-body [data-streamdown="code-block"] {
+  content-visibility: visible !important;
 }
-.markdown-body pre code {
-  @apply bg-background p-0;
+.markdown-body pre {
+  @apply font-mono text-[0.84rem] leading-[1.65];
+  tab-size: 2;
 }
 
 /* Tables */
@@ -298,38 +291,6 @@
 }
 .markdown-body .katex-display {
   @apply my-5 overflow-x-auto overflow-y-hidden py-1;
-}
-
-/* Syntax highlighting (rehype-highlight/highlight.js class names). */
-.hljs-comment,
-.hljs-quote {
-  @apply text-muted-foreground italic;
-}
-.hljs-keyword,
-.hljs-selector-tag,
-.hljs-built_in,
-.hljs-type {
-  color: var(--md-keyword);
-}
-.hljs-string,
-.hljs-regexp,
-.hljs-attr,
-.hljs-symbol {
-  color: var(--md-string);
-}
-.hljs-number,
-.hljs-literal {
-  color: var(--md-number);
-}
-.hljs-title,
-.hljs-section {
-  color: var(--md-title);
-}
-.hljs-emphasis {
-  @apply italic;
-}
-.hljs-strong {
-  @apply font-bold;
 }
 
 /* Sidebar easing: fast start, long soft landing. */

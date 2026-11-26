@@ -1,17 +1,13 @@
-import { defaultUrlTransform } from "react-markdown"
-import rehypeHighlight from "rehype-highlight"
 import rehypeKatex from "rehype-katex"
-import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
-import type { Options } from "react-markdown"
+import { defaultRemarkPlugins, type StreamdownProps } from "streamdown"
 
 // LLM output is untrusted: only these schemes may survive in href/src.
+// Relative URLs are dropped too: they would navigate the WebView.
 const allowedUrl = /^(https?:|mailto:)/i
 
 export function urlTransform(url: string): string {
-  const safe = defaultUrlTransform(url)
-  // Relative URLs are dropped too: they would navigate the WebView.
-  return allowedUrl.test(safe) ? safe : ""
+  return allowedUrl.test(url) ? url : ""
 }
 
 interface MarkdownNode {
@@ -48,12 +44,15 @@ function rehypeProtectMathCode() {
   }
 }
 
-// Defined once so react-markdown receives stable references on every render.
-export const remarkPlugins: NonNullable<Options["remarkPlugins"]> = [
-  remarkGfm,
+// Defined once so Streamdown receives stable references on every render.
+// Streamdown's defaults are GFM plus code-fence metadata.
+export const remarkPlugins: NonNullable<StreamdownProps["remarkPlugins"]> = [
+  ...Object.values(defaultRemarkPlugins),
   [remarkMath, { singleDollarTextMath: true }],
 ]
-export const rehypePlugins: NonNullable<Options["rehypePlugins"]> = [
+// Replaces Streamdown's rehype-raw/sanitize/harden defaults: without rehype-raw,
+// raw HTML stays literal text, and `urlTransform` filters every URL attribute.
+export const rehypePlugins: NonNullable<StreamdownProps["rehypePlugins"]> = [
   rehypeProtectMathCode,
   // rehype-katex catches parse errors and retries with throwOnError: false.
   [
@@ -66,7 +65,4 @@ export const rehypePlugins: NonNullable<Options["rehypePlugins"]> = [
       errorColor: "var(--destructive)",
     },
   ],
-  // detect: no guessing for unlabeled fences; ignoreMissing: unknown labels
-  // must not throw while a response is still streaming.
-  [rehypeHighlight, { detect: false, ignoreMissing: true }],
 ]

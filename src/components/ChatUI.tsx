@@ -1,4 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
+import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso"
 import {
   BrainIcon,
   Check,
@@ -38,158 +48,257 @@ import {
 import type { ChatMessage } from "@/src/types/chat"
 import type { MessageNode } from "@/src/types/session"
 
+/** A stored message, or the reply still streaming in (it has no id yet). */
+type Row = MessageNode | ChatMessage
+
+interface ListContext {
+  select: (nodeId: string) => void
+}
+
+// Rows are padded, not margined: Virtuoso measures each row's own box.
+const column = "mx-auto w-full max-w-3xl border-x border-transparent px-4"
+
 export function ChatUI() {
+  // One list per session: it opens at the bottom and keeps no scroll state from another chat.
+  const activeId = useSession((s) => s.activeId)
+  return <Conversation key={activeId ?? "new"} />
+}
+
+function Conversation() {
   const messages = useMessages()
   // Every node in the session, to find siblings.
   const allMessages = useSession((s) => s.data.messages)
-  // Sending, switching or restoring: hides the missing-reply notice.
+  // Sending, switching or restoring: disables edits and branch switches.
   const busy = useBusy()
   const error = useError()
   const { canSend } = useChatContext()
   // Subscribed here, not in the parent, so only the conversation re-renders per delta.
   const { message: partialMessage, isPending } = useActiveStream()
-  const messageEnd = useRef<HTMLDivElement>(null)
-  const log = useRef<HTMLDivElement>(null)
+  const list = useRef<VirtuosoHandle>(null)
+  const scroller = useRef<HTMLElement | null>(null)
+  // Cleared only by scrolling up, so content growing below the view keeps it set.
+  const stuck = useRef(true)
+  const lastTop = useRef(0)
   const scrollTarget = useRef<string | null>(null)
-  const select = (id: string) => {
-    scrollTarget.current = id
-    onSwitch(id)
-  }
+  const context = useMemo<ListContext>(
+    () => ({
+      select: (id) => {
+        scrollTarget.current = id
+        // The target is scrolled to below; don't let sticking pull it to the bottom.
+        stuck.current = false
+        onSwitch(id)
+      },
+    }),
+    []
+  )
   useEffect(() => {
     const id = scrollTarget.current
     scrollTarget.current = null
-    const target =
-      id && log.current?.querySelector(`[data-message-id="${CSS.escape(id)}"]`)
-    if (target) {
-      target.scrollIntoView({ block: "start" })
-      return
-    }
-    messageEnd.current?.scrollIntoView({ block: "nearest" })
-  }, [messages, partialMessage, isPending, error])
+    const index = id ? messages.findIndex((message) => message.id === id) : -1
+    if (index >= 0)
+      list.current?.scrollToIndex({ index, align: "start", offset: -16 })
+  }, [messages])
+  // Keeps the bottom in view as the reply grows, unless the user scrolled up.
+  const stick = useCallback(() => {
+    const element = scroller.current
+    if (element && stuck.current) element.scrollTop = element.scrollHeight
+  }, [])
+  // Before paint, for the DOM React just wrote; rows Virtuoso sizes afterwards are
+  // caught by `totalListHeightChanged`.
+  useLayoutEffect(stick, [stick, partialMessage, isPending, error])
+  const rows = useMemo<Row[]>(
+    () => (partialMessage ? [...messages, partialMessage] : messages),
+    [messages, partialMessage]
+  )
+  return (
+    <Virtuoso
+      ref={list}
+      className="min-h-0 w-full flex-1 text-[0.9rem]"
+      // No live region: rows remount while scrolling and would be re-announced.
+      // The footer's status line announces progress.
+      role="region"
+      aria-label="Conversation"
+      data={rows}
+      context={context}
+      components={components}
+      computeItemKey={(_, row) => ("id" in row ? row.id : "stream")}
+      initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+      scrollerRef={(element) => {
+        scroller.current = element instanceof HTMLElement ? element : null
+      }}
+      onScroll={(event) => {
+        const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
+        if (scrollHeight - scrollTop - clientHeight < 32) stuck.current = true
+        else if (scrollTop < lastTop.current) stuck.current = false
+        lastTop.current = scrollTop
+      }}
+      // Growth outside a delta: late highlighting, the finished reply's buttons.
+      totalListHeightChanged={stick}
+      // Rows render before they scroll in, so tall replies don't pop in.
+      increaseViewportBy={{ top: 800, bottom: 400 }}
+      // Jump to the user's own new message, even from above. Off otherwise: while
+      // on, Virtuoso also chases a growing last row and pulls back a user who scrolled up.
+      followOutput={
+        rows[rows.length - 1]?.role === "user" ? () => "auto" : false
+      }
+      itemContent={(_, row) =>
+        "id" in row ? (
+          <MessageRow
+            message={row}
+            allMessages={allMessages}
+            busy={busy}
+            canSend={canSend}
+            onSelect={context.select}
+          />
+        ) : (
+          <div className={`${column} pb-4`}>
+            <AssistantMessage
+              message={row}
+              isPending={isPending}
+              failed={error !== null}
+            />
+          </div>
+        )
+      }
+    />
+  )
+}
+
+const components: Components<Row, ListContext> = {
+  Header: () => <div className="h-4" />,
+  EmptyPlaceholder: () => (
+    <p className={`${column} text-sm text-muted-foreground`}>
+      Start a conversation. Chats are saved on this device.
+    </p>
+  ),
+  Footer: ListFooter,
+}
+
+/** Status, error and retry below the messages, then room for the composer that overlays the list. */
+function ListFooter({ context }: { context?: ListContext }) {
+  const messages = useMessages()
+  const allMessages = useSession((s) => s.data.messages)
+  // Sending, switching or restoring: hides the missing-reply notice.
+  const busy = useBusy()
+  const error = useError()
+  const { canSend } = useChatContext()
+  const { message: partialMessage, isPending } = useActiveStream()
   const canRetry = canSend && awaitsReply(messages, busy)
   // A user message that already has replies (e.g. a failed regenerate): let the user go back to them.
   const last = messages[messages.length - 1]
   const replies = last?.role === "user" ? children(allMessages, last.id) : []
-  const strandedNav = (
+  const strandedNav = context && (
     <SiblingNav
       nodes={replies}
       currentId={null}
       disabled={busy}
-      onSelect={select}
+      onSelect={context.select}
     />
   )
   return (
-    <div
-      ref={log}
-      className="min-h-0 w-full flex-1 overflow-y-auto text-[0.9rem] scroll-pb-[var(--composer-height,0px)]"
-      role="log"
-      aria-label="Conversation"
-      aria-live="polite"
-    >
-      <div className="mx-auto w-full max-w-3xl border-x border-transparent p-4 pb-[calc(var(--composer-height,0px)+1rem)]">
-        {messages.length === 0 ? (
+    <div className={`${column} pb-[calc(var(--composer-height,0px)+1rem)]`}>
+      {isPending && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {partialMessage ? "Receiving response…" : "Waiting for the model…"}
+        </p>
+      )}
+      {error !== null && (
+        <div className="space-y-2 rounded-lg border border-destructive p-3">
+          <p
+            role="alert"
+            className="whitespace-pre-wrap wrap-break-word text-sm"
+          >
+            {error}
+          </p>
           <p className="text-sm text-muted-foreground">
-            Start a conversation. Chats are saved on this device.
+            Your messages are kept. Check the local server, provider URL, model
+            ID, and effort support, then retry with the current settings.
           </p>
-        ) : (
-          messages.map((message) => {
-            const nav = (
-              <SiblingNav
-                nodes={siblings(allMessages, message)}
-                currentId={message.id}
-                disabled={busy}
-                onSelect={select}
-              />
-            )
-            return message.role === "assistant" ? (
-              <AssistantMessage
-                key={message.id}
-                message={message}
-                messageId={message.id}
-                actions={
-                  <>
-                    {nav}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Regenerate response"
-                      disabled={busy || !canSend}
-                      onClick={() => onRegenerate(message)}
-                    >
-                      <RefreshCw size={16} />
-                    </Button>
-                  </>
-                }
-              />
-            ) : (
-              <UserMessage
-                key={message.id}
-                message={message}
-                nav={nav}
-                disabled={busy}
-                canEdit={canSend}
-                onEdit={onEdit}
-              />
-            )
-          })
-        )}
-        {partialMessage && (
-          <AssistantMessage
-            message={partialMessage}
-            isPending={isPending}
-            failed={error !== null}
-          />
-        )}
-        {isPending && (
-          <p role="status" className="text-sm text-muted-foreground">
-            {partialMessage ? "Receiving response…" : "Waiting for the model…"}
-          </p>
-        )}
-        {error !== null && (
-          <div className="space-y-2 rounded-lg border border-destructive p-3">
-            <p
-              role="alert"
-              className="whitespace-pre-wrap wrap-break-word text-sm"
-            >
-              {error}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Your messages are kept. Check the local server, provider URL,
-              model ID, and effort support, then retry with the current
-              settings.
-            </p>
-            {!canSend && (
-              <p role="status" className="text-sm text-muted-foreground">
-                Open Provider settings and select a model to enable Retry.
-              </p>
-            )}
-            <div className="flex items-center gap-2">
-              <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
-                Retry
-              </Button>
-              {strandedNav}
-            </div>
-          </div>
-        )}
-        {error === null && awaitsReply(messages, busy) && (
-          <div className="space-y-2 rounded-lg border p-3">
+          {!canSend && (
             <p role="status" className="text-sm text-muted-foreground">
-              No response yet.
-              {!canSend && " Open Provider settings and select a model."}
+              Open Provider settings and select a model to enable Retry.
             </p>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
-                Retry
-              </Button>
-              {strandedNav}
-            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
+              Retry
+            </Button>
+            {strandedNav}
           </div>
-        )}
-        <div ref={messageEnd} />
-      </div>
+        </div>
+      )}
+      {error === null && awaitsReply(messages, busy) && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <p role="status" className="text-sm text-muted-foreground">
+            No response yet.
+            {!canSend && " Open Provider settings and select a model."}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
+              Retry
+            </Button>
+            {strandedNav}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
+
+/** Memoized: during a stream none of its props change, so finished messages skip rendering. */
+const MessageRow = memo(function MessageRow({
+  message,
+  allMessages,
+  busy,
+  canSend,
+  onSelect,
+}: {
+  message: MessageNode
+  allMessages: readonly MessageNode[]
+  busy: boolean
+  canSend: boolean
+  onSelect: (nodeId: string) => void
+}) {
+  const nav = (
+    <SiblingNav
+      nodes={siblings(allMessages, message)}
+      currentId={message.id}
+      disabled={busy}
+      onSelect={onSelect}
+    />
+  )
+  return (
+    <div className={`${column} pb-4`}>
+      {message.role === "assistant" ? (
+        <AssistantMessage
+          message={message}
+          actions={
+            <>
+              {nav}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Regenerate response"
+                disabled={busy || !canSend}
+                onClick={() => onRegenerate(message)}
+              >
+                <RefreshCw size={16} />
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <UserMessage
+          message={message}
+          nav={nav}
+          disabled={busy}
+          canEdit={canSend}
+          onEdit={onEdit}
+        />
+      )}
+    </div>
+  )
+})
 
 /** `◀ n/m ▶` over sibling nodes; renders nothing for fewer than two. A null `currentId` shows `–`. */
 function SiblingNav({
@@ -260,10 +369,7 @@ function UserMessage({
     setDraft(null)
   }
   return (
-    <div
-      data-message-id={message.id}
-      className="mb-4 flex scroll-mt-4 flex-col gap-2"
-    >
+    <div className="flex flex-col gap-2">
       {draft === null ? (
         <article className="ml-auto max-w-[85%] rounded-xl bg-muted p-3">
           <h2 className="mb-1 text-xs font-medium text-muted-foreground">
@@ -346,10 +452,8 @@ function AssistantMessage({
   isPending = false,
   failed = false,
   actions,
-  messageId,
 }: {
   message: ChatMessage
-  messageId?: string
   isPending?: boolean
   failed?: boolean
   actions?: ReactNode
@@ -367,8 +471,7 @@ function AssistantMessage({
       aria-label={
         failed ? "Incomplete assistant response" : "Assistant response"
       }
-      data-message-id={messageId}
-      className="mb-4 flex scroll-mt-4 flex-col gap-3"
+      className="flex flex-col gap-3"
     >
       {message.reasoning && (
         <Trace>
@@ -397,7 +500,9 @@ function AssistantMessage({
           </TraceCollapsible>
         </Trace>
       )}
-      {message.content && <MarkdownRenderer content={message.content} />}
+      {message.content && (
+        <MarkdownRenderer content={message.content} streaming={isPending} />
+      )}
       {message.content && !isPending && (
         <div className="flex items-center gap-1">
           <CopyButton text={message.content} />
