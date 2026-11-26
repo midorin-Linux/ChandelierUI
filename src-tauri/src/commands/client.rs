@@ -266,6 +266,7 @@ pub(super) async fn complete_cancellable(
             };
         }
     };
+    let chunk_timeout = payload.timeout.unwrap_or(client.chunk_timeout);
     let request = payload.request;
     if request.model.trim().is_empty()
         || request.messages.is_empty()
@@ -349,7 +350,7 @@ pub(super) async fn complete_cancellable(
                 Some("Generation cancelled.".into()),
             );
         }
-        res = timeout(client.chunk_timeout, send_fut) => match res {
+        res = timeout(chunk_timeout, send_fut) => match res {
             Ok(Ok(response)) => response,
             Ok(Err(())) => {
                 return stream.finish(
@@ -379,7 +380,7 @@ pub(super) async fn complete_cancellable(
                     Some("Generation cancelled.".into()),
                 );
             }
-            res = timeout(client.chunk_timeout, body.frame()) => match res {
+            res = timeout(chunk_timeout, body.frame()) => match res {
                 Ok(Some(Ok(frame))) => {
                     let Some(bytes) = frame.data_ref() else {
                         continue;

@@ -10,6 +10,8 @@ mod stream;
 mod tests;
 mod types;
 
+use std::time::Duration;
+
 pub use client::{HttpClient, http_client};
 use client::{complete_cancellable, fetch_models};
 use metrics::MeasuredCompletion;
@@ -35,6 +37,7 @@ pub async fn chat_completion(
     on_event: Channel<CompletionDelta>,
 ) -> Result<MeasuredCompletion, String> {
     providers::resolve(&db.0, &mut payload.provider, secrets::load).await?;
+    payload.timeout = response_timeout(&db.0).await?;
     let (id, rx) = client.register_cancel();
     let _guard = CancelGuard(client.inner(), id);
     let cancel = async move {
@@ -50,6 +53,18 @@ pub async fn chat_completion(
         })
         .await,
     )
+}
+
+/// The saved response timeout; `None` when unset or outside 1..=3600 seconds.
+async fn response_timeout(pool: &SqlitePool) -> Result<Option<Duration>, String> {
+    let settings = crate::storage::get_settings(pool)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(settings
+        .get("chat.timeout_secs")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|secs| (1 ..= 3600).contains(secs))
+        .map(Duration::from_secs))
 }
 
 #[tauri::command]
