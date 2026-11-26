@@ -40,19 +40,29 @@ import type { MessageNode, SessionData } from "@/src/types/session"
 
 interface ChatState {
   stream: CompletionStream
+  /** The session `stream` belongs to; the stream is shown only there. */
+  streamSessionId: string | null
   error: string | null
-  /** A send or session switch is running; others are refused until it ends. */
-  locked: boolean
+  /** The session a request error belongs to; null for errors shown anywhere. */
+  errorSessionId: string | null
+  /** A send is running, from the first save to the stored attempt. One at a time. */
+  sending: boolean
+  /** A session is being opened, started or deleted. */
+  switching: boolean
 }
 
 /** Run state of the conversation view; the conversation itself is in `session`. */
 export const useChatStore = create<ChatState>(() => ({
   stream: { attemptId: 0, isPending: false, message: null },
+  streamSessionId: null,
   error: null,
-  locked: false,
+  errorSessionId: null,
+  sending: false,
+  switching: false,
 }))
 
-const setError = (error: string | null) => useChatStore.setState({ error })
+const setError = (error: string | null, errorSessionId: string | null = null) =>
+  useChatStore.setState({ error, errorSessionId })
 const dispatchStream = (event: Parameters<typeof completionStream>[1]) =>
   useChatStore.setState((s) => ({ stream: completionStream(s.stream, event) }))
 
@@ -143,10 +153,48 @@ export function useMessages() {
   return useMemo(() => pathToRoot(messages, head), [messages, head])
 }
 
+/** Sending, switching or restoring: no new send, edit or branch switch. */
 export function useBusy() {
-  const locked = useChatStore((s) => s.locked)
+  const busy = useChatStore((s) => s.sending || s.switching)
   const restoring = useSession((s) => s.restoring)
-  return locked || restoring
+  return busy || restoring
+}
+
+/**
+ * Sessions can be switched while a reply streams, but not while a send is
+ * saving first (a new chat gets its id then) or storing the result.
+ */
+const switchBlocked = (s: ChatState) =>
+  s.switching || (s.sending && !s.stream.isPending)
+
+export function useCanSwitch() {
+  const blocked = useChatStore(switchBlocked)
+  const restoring = useSession((s) => s.restoring)
+  return !blocked && !restoring
+}
+
+/** The session a reply is streaming into, if any. */
+export const useStreamingSessionId = () =>
+  useChatStore((s) => (s.sending ? s.streamSessionId : null))
+
+/** The current error, unless it belongs to another session. */
+export function useError() {
+  const activeId = useSession((s) => s.activeId)
+  return useChatStore((s) =>
+    s.errorSessionId === null || s.errorSessionId === activeId ? s.error : null
+  )
+}
+
+/** The stream, if it belongs to the session on screen. */
+export function useActiveStream() {
+  const activeId = useSession((s) => s.activeId)
+  const message = useChatStore((s) =>
+    s.streamSessionId === activeId ? s.stream.message : null
+  )
+  const isPending = useChatStore(
+    (s) => s.streamSessionId === activeId && s.stream.isPending
+  )
+  return { message, isPending }
 }
 
 // ---- Requests -------------------------------------------------------------
@@ -184,10 +232,13 @@ async function requestCompletion(
   settings: Pick<SessionData, "reasoning_effort" | "system_prompt">
 ) {
   setError(null)
+  // Shown only in its own session (a switch may still be loading); the attempt log keeps it too.
+  const fail = (message: string) => setError(message, sessionId)
   const requestPayload = buildPayload(history, context, settings)
   const startedAt = new Date().toISOString()
   const started = performance.now()
   const id = session.nextAttemptId()
+  useChatStore.setState({ streamSessionId: sessionId })
   dispatchStream({ type: "start", attemptId: id })
   const contextLength =
     context.models.find((model) => model.id === context.selectedModel)
@@ -198,7 +249,7 @@ async function requestCompletion(
     result = await chatCompletion(requestPayload, (delta) =>
       dispatchStream({ type: "delta", attemptId: id, delta })
     )
-    if (result.error) setError(result.error)
+    if (result.error) fail(result.error)
     else if (result.message) {
       reply = {
         id: crypto.randomUUID(),
@@ -211,7 +262,7 @@ async function requestCompletion(
     }
   } catch (cause) {
     const message = errorMessage(cause)
-    setError(message)
+    fail(message)
     result = {
       message: null,
       error: message,
@@ -238,19 +289,24 @@ async function requestCompletion(
   })
 }
 
-const isBusy = () =>
-  useChatStore.getState().locked || session.store.getState().restoring
+const isBusy = () => {
+  const { sending, switching } = useChatStore.getState()
+  return sending || switching || session.store.getState().restoring
+}
 
-/** Runs `task` as the only operation: sends, session switches and restores exclude each other. */
+const canSwitch = () =>
+  !switchBlocked(useChatStore.getState()) && !session.store.getState().restoring
+
+/** Runs a send: only one at a time, and never during a switch or restore. */
 async function exclusive(task: () => Promise<void>) {
   if (isBusy()) return
-  useChatStore.setState({ locked: true })
+  useChatStore.setState({ sending: true })
   try {
     await task()
   } catch (cause) {
     setError(errorMessage(cause))
   } finally {
-    useChatStore.setState({ locked: false })
+    useChatStore.setState({ sending: false })
   }
 }
 
@@ -370,7 +426,7 @@ export function switchBranch(nodeId: string) {
 }
 
 export async function cancelCompletion() {
-  if (!useChatStore.getState().locked) return
+  if (!useChatStore.getState().sending) return
   try {
     await cancelChat()
   } catch (cause) {
@@ -378,19 +434,25 @@ export async function cancelCompletion() {
   }
 }
 
+/** Allowed while a reply streams: it keeps going and is saved to its own session. */
 function switchSession(action: () => Promise<void>) {
-  void exclusive(async () => {
-    setError(null)
-    dispatchStream({ type: "reset" })
-    await action()
-  })
+  if (!canSwitch()) return
+  useChatStore.setState({ switching: true })
+  setError(null)
+  if (!useChatStore.getState().sending) dispatchStream({ type: "reset" })
+  void action()
+    .catch((cause) => setError(errorMessage(cause)))
+    .finally(() => useChatStore.setState({ switching: false }))
 }
 
 export const newSession = () =>
   switchSession(() => session.startNew(getContext().selectedModel))
 export const openSession = (id: string) => switchSession(() => session.open(id))
-export const deleteSession = (id: string) =>
+export function deleteSession(id: string) {
+  const { sending, streamSessionId } = useChatStore.getState()
+  if (sending && id === streamSessionId) return // its reply still has to be saved
   switchSession(() => session.remove(id, getContext().selectedModel))
+}
 export const renameSession = (id: string, title: string) =>
   void session.rename(id, title)
 

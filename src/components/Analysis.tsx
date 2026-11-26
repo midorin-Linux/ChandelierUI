@@ -26,8 +26,8 @@ import {
 import type { CompletionMetrics } from "@/src/types/analysis"
 import {
   buildPayload,
+  useActiveStream,
   useChatContext,
-  useChatStore,
   useMessages,
   useSession,
 } from "@/src/stores/chat"
@@ -136,7 +136,7 @@ function Note({ children }: { children: ReactNode }) {
 
 export function Analysis() {
   const attempts = useSession((s) => s.attempts)
-  const isPending = useChatStore((s) => s.stream.isPending)
+  const { isPending } = useActiveStream()
   // The request the composer would send now.
   const messages = useMessages()
   const context = useChatContext()

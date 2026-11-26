@@ -28,9 +28,10 @@ import {
   regenerate as onRegenerate,
   retry as onRetry,
   switchBranch as onSwitch,
+  useActiveStream,
   useBusy,
   useChatContext,
-  useChatStore,
+  useError,
   useMessages,
   useSession,
 } from "@/src/stores/chat"
@@ -43,11 +44,10 @@ export function ChatUI() {
   const allMessages = useSession((s) => s.data.messages)
   // Sending, switching or restoring: hides the missing-reply notice.
   const busy = useBusy()
-  const error = useChatStore((s) => s.error)
+  const error = useError()
   const { canSend } = useChatContext()
   // Subscribed here, not in the parent, so only the conversation re-renders per delta.
-  const partialMessage = useChatStore((s) => s.stream.message)
-  const isPending = useChatStore((s) => s.stream.isPending)
+  const { message: partialMessage, isPending } = useActiveStream()
   const messageEnd = useRef<HTMLDivElement>(null)
   const log = useRef<HTMLDivElement>(null)
   const scrollTarget = useRef<string | null>(null)

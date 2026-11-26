@@ -40,15 +40,17 @@ import {
   newSession as onNew,
   openSession as onSelect,
   renameSession as onRename,
-  useBusy,
+  useCanSwitch,
   useSession,
+  useStreamingSessionId,
 } from "@/src/stores/chat"
 import type { SessionSummary } from "@/src/types/session"
 
 export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const sessions = useSession((s) => s.sessions)
   const activeId = useSession((s) => s.activeId)
-  const disabled = useBusy()
+  const disabled = !useCanSwitch()
+  const streamingId = useStreamingSessionId()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
 
@@ -136,7 +138,7 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                             Rename
                           </DropdownMenuItem>
                           <DropdownMenuItem
-                            disabled={disabled}
+                            disabled={disabled || session.id === streamingId}
                             onSelect={() => setDeleting(session)}
                           >
                             <Trash2Icon />

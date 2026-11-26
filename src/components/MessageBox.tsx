@@ -13,9 +13,9 @@ import { isSubmitEnter } from "@/src/lib/utils"
 import {
   cancelCompletion,
   sendMessage as send,
+  useActiveStream,
   useBusy,
   useChatContext,
-  useChatStore,
   useSession,
 } from "@/src/stores/chat"
 
@@ -26,7 +26,8 @@ export function MessageBox({
 }) {
   const { selectedModel } = useChatContext()
   const selectedEffort = useSession((s) => s.data.reasoning_effort)
-  const isPending = useChatStore((s) => s.stream.isPending)
+  // Cancel shows only in the chat the reply streams into.
+  const { isPending } = useActiveStream()
   // Switching or restoring a session: sending is off but the draft is kept.
   const disabled = useBusy()
   const [draft, setDraft] = useState("")

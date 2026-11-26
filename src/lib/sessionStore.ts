@@ -26,7 +26,8 @@ export interface SessionState {
 
 /**
  * The active conversation and the session list, persisted through `storage`.
- * Callers must not switch sessions while a completion is in flight.
+ * Sessions may be switched while a completion is in flight: `commit` and
+ * `recordAttempt` then write to the stored copy of the session it belongs to.
  *
  * Every storage write and load goes through one queue, so a load never sees
  * data older than an earlier write. `rev` / `savedRev` track unsaved edits: a
@@ -76,11 +77,15 @@ export function createSessionStore(
     saveTimer = undefined
   }
 
-  /** Saves the current data; edits made while it runs stay dirty. */
+  /**
+   * Saves the current data; edits made while it runs stay dirty. Snapshotted now,
+   * not when the job runs, so a session switched in meanwhile is never saved as `id`.
+   */
   async function saveNow(id: string) {
+    const data = get().data
+    const target = rev
     await enqueue(async () => {
-      const target = rev
-      await storage.saveSession(id, get().data)
+      await storage.saveSession(id, data)
       savedRev = Math.max(savedRev, target)
     })
     void refresh()
@@ -207,9 +212,28 @@ export function createSessionStore(
       return id
     },
 
-    /** Saves the finished reply to the session the request started in. */
+    /** Saves the finished reply to the session the request started in, even if it is not shown. */
     async commit(id: string, node: MessageNode) {
-      if (get().activeId !== id) return
+      const has = (data: SessionData) =>
+        data.messages.some((message) => message.id === node.id)
+      // ponytail: if this save fails after the user switched away, the reply is
+      // reported but not retried (the shown session no longer holds it). Keep it
+      // in a pending list per session if storage failures become a real concern.
+      if (get().activeId !== id) {
+        try {
+          await enqueue(async () => {
+            const { data } = await storage.loadSession(id)
+            if (!has(data))
+              await storage.saveSession(id, commitNode(data, node))
+          })
+        } catch (cause) {
+          hooks.onError(cause)
+          return
+        }
+        void refresh()
+        // Reopened meanwhile: the loaded copy may predate the reply.
+        if (get().activeId !== id || has(get().data)) return
+      }
       apply(commitNode(get().data, node))
       rev++
       await saveNow(id).catch(hooks.onError)
@@ -217,10 +241,19 @@ export function createSessionStore(
 
     /** Resolves once the attempt is stored, so callers can hold their lock until then. */
     async recordAttempt(id: string, attempt: CompletionAttempt) {
-      if (get().activeId === id) set({ attempts: [...get().attempts, attempt] })
+      const show = () => {
+        if (get().activeId !== id) return
+        // Reopening mid-request reseeds the counter without this attempt.
+        attemptCounter = Math.max(attemptCounter, attempt.id)
+        const { attempts } = get()
+        if (!attempts.some((a) => a.id === attempt.id))
+          set({ attempts: [...attempts, attempt] })
+      }
+      show()
       await enqueue(() => storage.appendAttempt(id, attempt))
         .then(refresh)
         .catch(hooks.onError)
+      show() // reopened while it was stored
     },
 
     async startNew(model: string) {
