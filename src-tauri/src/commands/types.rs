@@ -56,6 +56,10 @@ pub struct ChatRequest {
 pub struct ChatPayload {
     pub(super) provider: Provider,
     pub(super) request: ChatRequest,
+    /// Longest silence allowed from the provider, filled from stored settings
+    /// (see `response_timeout`). `None` uses the client default.
+    #[serde(skip)]
+    pub(super) timeout: Option<std::time::Duration>,
 }
 
 #[derive(Serialize)]

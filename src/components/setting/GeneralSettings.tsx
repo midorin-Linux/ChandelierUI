@@ -12,12 +12,20 @@ import {
 import { Textarea } from "@/src/components/ui/textarea"
 import { efforts } from "@/src/types/chat"
 import { useChatContext } from "@/src/stores/chat"
-import { setDefaults, useSettingsStore } from "@/src/stores/settings"
+import {
+  isTimeoutSecs,
+  MAX_TIMEOUT_SECS,
+  setDefaults,
+  setTimeoutSecs,
+  useSettingsStore,
+} from "@/src/stores/settings"
+import { Input } from "@/src/components/ui/input"
 import { Separator } from "@/src/components/ui/separator"
 
 export function GeneralSettings() {
   const { models } = useChatContext()
   const defaults = useSettingsStore((s) => s.defaults)
+  const timeoutSecs = useSettingsStore((s) => s.timeoutSecs)
   const { theme, setTheme } = useTheme()
   // A body-level portal counts as outside the Radix dialog, so clicks never select.
   const [dialog, setDialog] = useState<HTMLElement | null>(null)
@@ -61,6 +69,39 @@ export function GeneralSettings() {
               ))}
             </TabsList>
           </Tabs>
+        </div>
+      </div>
+
+      {/*Response*/}
+      <div className="flex flex-col gap-3">
+        <h3 className="text-base font-semibold">Response</h3>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <label htmlFor="response-timeout" className="text-sm">
+              Timeout (seconds)
+            </label>
+            <p className="text-sm text-muted-foreground">
+              Longest wait without receiving data from the provider (1–
+              {MAX_TIMEOUT_SECS}). The timer restarts whenever data arrives.
+            </p>
+          </div>
+          {/* Uncontrolled, so the field can be empty while typing. */}
+          <Input
+            id="response-timeout"
+            type="number"
+            min={1}
+            max={MAX_TIMEOUT_SECS}
+            className="w-24"
+            defaultValue={timeoutSecs}
+            onChange={(e) => {
+              const value = e.target.valueAsNumber
+              if (isTimeoutSecs(value)) setTimeoutSecs(value)
+            }}
+            // Invalid input is never saved, so show the saved value again.
+            onBlur={(e) => {
+              e.target.value = String(useSettingsStore.getState().timeoutSecs)
+            }}
+          />
         </div>
       </div>
 

@@ -14,12 +14,23 @@ const SETTING_LAST_SESSION = "ui.last_session_id"
 const SETTING_DEFAULT_EFFORT = "session.default_effort"
 const SETTING_DEFAULT_MODEL = "session.default_model"
 const SETTING_DEFAULT_PROMPT = "session.default_system_prompt"
+const SETTING_TIMEOUT = "chat.timeout_secs" // read by the backend
+
+// Keep in step with the backend's default and accepted range.
+const DEFAULT_TIMEOUT_SECS = 120
+export const MAX_TIMEOUT_SECS = 3600
+export const isTimeoutSecs = (value: unknown): value is number =>
+  Number.isInteger(value) &&
+  (value as number) >= 1 &&
+  (value as number) <= MAX_TIMEOUT_SECS
 
 interface SettingsState {
   /** False until the first read finishes; nothing below is meaningful before that. */
   loaded: boolean
   presets: ProviderPreset[]
   defaults: SessionDefaults
+  /** Longest silence allowed from the provider during a reply, in seconds. */
+  timeoutSecs: number
   /** The session to reopen on launch. */
   lastSessionId: string | null
 }
@@ -29,6 +40,7 @@ export const useSettingsStore = create<SettingsState>(() => ({
   loaded: false,
   presets: [],
   defaults: { providerId: null, effort: "off", model: "", systemPrompt: "" },
+  timeoutSecs: DEFAULT_TIMEOUT_SECS,
   lastSessionId: null,
 }))
 
@@ -62,6 +74,9 @@ export function loadSettings() {
           model: str(saved[SETTING_DEFAULT_MODEL]),
           systemPrompt: str(saved[SETTING_DEFAULT_PROMPT]),
         },
+        timeoutSecs: isTimeoutSecs(saved[SETTING_TIMEOUT])
+          ? saved[SETTING_TIMEOUT]
+          : DEFAULT_TIMEOUT_SECS,
         lastSessionId: str(saved[SETTING_LAST_SESSION]) || null,
       })
       // A migrated legacy URL gets its generated id saved right away,
@@ -94,6 +109,11 @@ export function setDefaults(patch: Partial<SessionDefaults>) {
   // Typed key by key, so saved once typing pauses.
   if (next.systemPrompt !== prev.systemPrompt)
     settingsWriter.setDebounced(SETTING_DEFAULT_PROMPT, next.systemPrompt)
+}
+
+export function setTimeoutSecs(timeoutSecs: number) {
+  set({ timeoutSecs })
+  settingsWriter.setDebounced(SETTING_TIMEOUT, timeoutSecs)
 }
 
 export function setLastSessionId(id: string | null) {

@@ -12,6 +12,7 @@ use super::{
     },
     list_models_with,
     metrics::{ChunkIntervals, CompletionMetrics},
+    response_timeout,
     sse::{MAX_SSE_EVENT_BYTES, SseDecoder},
     stream::CompletionStream,
     types::{
@@ -914,6 +915,35 @@ async fn allows_long_streams_within_chunk_timeout_and_enforces_connect_timeout()
     assert!(result.metrics.timed_out);
     assert_eq!(result.metrics.http_status, None);
     server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn saved_response_timeout_overrides_the_client_default() {
+    let pool = crate::storage::tests::memory_pool().await;
+    assert_eq!(response_timeout(&pool).await, Ok(None));
+    for (saved, expected) in [(0, None), (3601, None), (600, Some(600))] {
+        crate::storage::set_setting(&pool, "chat.timeout_secs", &saved.into())
+            .await
+            .unwrap();
+        assert_eq!(
+            response_timeout(&pool).await,
+            Ok(expected.map(Duration::from_secs))
+        );
+    }
+
+    let (base, task) = stream_server(
+        "200 OK",
+        vec![(Duration::from_millis(200), completion("done").into_bytes())],
+        0,
+    )
+    .await;
+    let client =
+        http_client_with_timeouts(Duration::from_secs(5), Duration::from_millis(50)).unwrap();
+    let mut payload = payload(base, "off");
+    payload.timeout = Some(Duration::from_secs(5));
+    let result = complete(&client, payload, |_| Ok(())).await;
+    assert_eq!(result.error, None);
+    task.await.unwrap();
 }
 
 #[tokio::test]
