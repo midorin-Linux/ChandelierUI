@@ -1,5 +1,7 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
+import { getCurrentWindow } from "@tauri-apps/api/window"
 import { createMemoryStorage } from "@/src/lib/memoryStorage"
+import { createSettingsWriter } from "@/src/lib/settingsWriter"
 import type { MeasuredCompletion } from "@/src/types/analysis"
 import type {
   ApiModel,
@@ -43,12 +45,20 @@ const tauriStorage: Storage = {
 
 export const storage: Storage = desktop ? tauriStorage : createMemoryStorage()
 
+/** The only writer of settings; see `createSettingsWriter`. */
+export const settingsWriter = createSettingsWriter(storage)
+
+// Write pending settings before the window closes.
+if (desktop)
+  void getCurrentWindow().onCloseRequested(() => settingsWriter.flush())
+
 /** Streams deltas to `onDelta`; resolves with the final message, or an error, and metrics. */
 export async function chatCompletion(
   payload: ProviderChatRequest,
   onDelta: (delta: CompletionDelta) => void
 ) {
   requireDesktop("Sending messages")
+  await settingsWriter.flush() // the backend resolves the preset from stored settings
   return invoke<MeasuredCompletion>("chat_completion", {
     payload,
     onEvent: new Channel<CompletionDelta>(onDelta),
@@ -62,6 +72,7 @@ export async function cancelChat() {
 
 export async function listModels(provider: ProviderChatRequest["provider"]) {
   requireDesktop("Loading models")
+  await settingsWriter.flush() // the backend resolves the preset from stored settings
   return invoke<ApiModel[]>("list_models", { provider })
 }
 

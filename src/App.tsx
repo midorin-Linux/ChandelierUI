@@ -1,12 +1,5 @@
 import "./App.css"
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react"
+import { useEffect, useMemo, useReducer, useRef, useState } from "react"
 import { Analysis } from "@/src/components/Analysis"
 import { TitleBar } from "@/src/components/TitleBar"
 import { ChatUI } from "@/src/components/ChatUI"
@@ -16,22 +9,23 @@ import { Dialog } from "@/src/components/ui/dialog"
 import { useModels } from "@/src/hooks/useModels"
 import { useSession } from "@/src/hooks/useSession"
 import {
-  SETTING_ACTIVE_ID,
-  SETTING_BASE_URL,
-  SETTING_DEFAULT_EFFORT,
-  SETTING_DEFAULT_MODEL,
-  SETTING_DEFAULT_PROMPT,
-  SETTING_LAST_SESSION,
-  SETTING_PRESETS,
-  useSettings,
-} from "@/src/hooks/useSettings"
-import { cancelChat, chatCompletion, deleteApiKey } from "@/src/lib/api"
+  loadSettings,
+  setDefaults,
+  setLastSessionId,
+  setPresets,
+  useSettingsStore,
+} from "@/src/stores/settings"
+import {
+  cancelChat,
+  chatCompletion,
+  deleteApiKey,
+  settingsWriter,
+} from "@/src/lib/api"
 import { emptyMetrics, toAttemptRequest } from "@/src/lib/analysis"
 import { completionStream } from "@/src/lib/completionStream"
 import {
   add,
   deletePreset,
-  migrate,
   sessionProvider,
   update,
 } from "@/src/lib/providerPresets"
@@ -39,68 +33,32 @@ import { retryHead } from "@/src/lib/retry"
 import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
 import type { MeasuredCompletion } from "@/src/types/analysis"
-import {
-  efforts,
-  type ProviderChatRequest,
-  type ProviderPreset,
-  type SessionDefaults,
-} from "@/src/types/chat"
+import type { ProviderChatRequest } from "@/src/types/chat"
 import type { MessageNode } from "@/src/types/session"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
 
 function App() {
-  const { settings, ...store } = useSettings()
+  const loaded = useSettingsStore((s) => s.loaded)
+  useEffect(() => void loadSettings(), [])
   // The theme stays outside the settings gate so it applies without waiting for IPC.
   return (
-    <ThemeProvider defaultTheme="system">
-      {settings && <Chat settings={settings} {...store} />}
-    </ThemeProvider>
+    <ThemeProvider defaultTheme="system">{loaded && <Chat />}</ThemeProvider>
   )
 }
 
-function Chat({
-  settings,
-  setSetting,
-  setSettingDebounced,
-  flushSettings,
-}: {
-  settings: Record<string, unknown>
-  setSetting: (key: string, value: unknown) => void
-  setSettingDebounced: (key: string, value: unknown) => void
-  flushSettings: () => Promise<void>
-}) {
-  const lastSession = settings[SETTING_LAST_SESSION]
-  const [presets, setPresets] = useState(() =>
-    migrate(settings[SETTING_PRESETS], settings[SETTING_BASE_URL])
-  )
-  const [defaults, setDefaultsState] = useState<SessionDefaults>(() => ({
-    providerId:
-      presets.find((p) => p.id === settings[SETTING_ACTIVE_ID])?.id ??
-      presets[0]?.id ??
-      null,
-    effort:
-      efforts.find((e) => e === settings[SETTING_DEFAULT_EFFORT]) ?? "off",
-    model:
-      typeof settings[SETTING_DEFAULT_MODEL] === "string"
-        ? settings[SETTING_DEFAULT_MODEL]
-        : "",
-    systemPrompt:
-      typeof settings[SETTING_DEFAULT_PROMPT] === "string"
-        ? settings[SETTING_DEFAULT_PROMPT]
-        : "",
-  }))
+function Chat() {
+  const presets = useSettingsStore((s) => s.presets)
+  const defaults = useSettingsStore((s) => s.defaults)
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
   const [error, setError] = useState<string | null>(null)
   const session = useSession(
     setError,
-    useCallback(
-      (id: string | null) => setSetting(SETTING_LAST_SESSION, id),
-      [setSetting]
-    ),
-    typeof lastSession === "string" ? lastSession : null,
+    setLastSessionId,
+    // Not subscribed: only the first restore uses it (useSession ignores later values).
+    useSettingsStore.getState().lastSessionId,
     defaults
   )
   // The session's own preset, else the new-chat default (`provider.active_id`).
@@ -123,12 +81,8 @@ function Chat({
     modelsStatus,
     selectModel,
     refreshModels,
-  } = useModels(
-    providerUrl,
-    activeId,
-    session.data.model,
-    (model) => session.edit({ model }),
-    flushSettings
+  } = useModels(providerUrl, activeId, session.data.model, (model) =>
+    session.edit({ model })
   )
   const selectedEffort = session.data.reasoning_effort
   const systemPrompt = session.data.system_prompt
@@ -149,29 +103,15 @@ function Chat({
   const busy = locked || session.restoring
   const canSend = !modelsLoading && selectedModel !== ""
 
-  // A migrated legacy URL gets its generated id saved right away, because
-  // the API key is stored under that id.
-  useEffect(() => {
-    if (Array.isArray(settings[SETTING_PRESETS]) || presets.length === 0) return
-    setSetting(SETTING_PRESETS, presets)
-    setSetting(SETTING_ACTIVE_ID, defaults.providerId)
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  function savePresets(next: ProviderPreset[], debounced = false) {
-    setPresets(next)
-    if (debounced) setSettingDebounced(SETTING_PRESETS, next)
-    else setSetting(SETTING_PRESETS, next)
-  }
-
   /** An explicit choice: saved to the session, and the default for new chats. */
   function selectProvider(id: string | null) {
     session.edit({ provider_id: id })
-    setDefaults({ ...defaults, providerId: id })
+    setDefaults({ providerId: id })
   }
 
   // Only called when the URL is confirmed (Enter / Fetch).
   function setProviderUrl(url: string) {
-    if (activeId) savePresets(update(presets, activeId, { baseUrl: url }))
+    if (activeId) setPresets(update(presets, activeId, { baseUrl: url }))
   }
 
   function addPreset() {
@@ -181,7 +121,7 @@ function Chat({
       baseUrl: "",
     }
     const next = add(presets, preset)
-    savePresets(next)
+    setPresets(next)
     selectProvider(preset.id)
   }
 
@@ -190,21 +130,8 @@ function Chat({
     if (!activeId) return
     // The browser preview has no keyring, so only the preset goes.
     const next = await deletePreset(presets, activeId, activeId, deleteApiKey)
-    savePresets(next.presets)
+    setPresets(next.presets)
     selectProvider(next.activeId)
-  }
-
-  function setDefaults(next: SessionDefaults) {
-    setDefaultsState(next)
-    if (next.providerId !== defaults.providerId)
-      setSetting(SETTING_ACTIVE_ID, next.providerId)
-    if (next.effort !== defaults.effort)
-      setSetting(SETTING_DEFAULT_EFFORT, next.effort)
-    if (next.model !== defaults.model)
-      setSetting(SETTING_DEFAULT_MODEL, next.model)
-    // Typed key by key, so saved once typing pauses.
-    if (next.systemPrompt !== defaults.systemPrompt)
-      setSettingDebounced(SETTING_DEFAULT_PROMPT, next.systemPrompt)
   }
 
   function openProviderSettings() {
@@ -248,7 +175,6 @@ function Chat({
     let result: MeasuredCompletion
     let reply: MessageNode | null = null
     try {
-      await flushSettings() // the backend resolves the preset from stored settings
       result = await chatCompletion(requestPayload, (delta) =>
         dispatchStream({ type: "delta", attemptId: id, delta })
       )
@@ -425,15 +351,13 @@ function Chat({
             // Escape/close unmounts the URL field without a blur.
             const url = providerUrlInput.trim()
             if (url !== providerUrl) setProviderUrl(url)
-            void flushSettings()
+            void settingsWriter.flush()
           }}
         >
           <AppSetting
             tab={settingsTab}
             onTabChange={setSettingsTab}
             models={models}
-            defaults={defaults}
-            onDefaultsChange={setDefaults}
             provider={{
               presets,
               activeId,
@@ -442,7 +366,7 @@ function Chat({
               onRemovePreset: removePreset,
               onRenamePreset: (name) =>
                 activeId &&
-                savePresets(update(presets, activeId, { name }), true),
+                setPresets(update(presets, activeId, { name }), true),
               providerUrl,
               setProviderUrl,
               providerUrlInput,

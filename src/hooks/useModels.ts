@@ -11,9 +11,7 @@ export function useModels(
   providerUrl: string,
   providerId: string | null,
   preferredModel: string,
-  onSelect: (model: string) => void,
-  /** Resolves once saved presets are stored; the backend resolves `providerId` from them. */
-  settingsSaved: () => Promise<void>
+  onSelect: (model: string) => void
 ) {
   const [modelList, setModelList] = useState<{
     providerUrl: string
@@ -71,8 +69,6 @@ export function useModels(
 
     async function loadModels() {
       try {
-        await settingsSaved()
-        if (cancelled) return
         const fetchedModels = await listModels({
           base_url: providerUrl,
           ...(providerId ? { id: providerId } : {}),
@@ -100,7 +96,7 @@ export function useModels(
     return () => {
       cancelled = true
     }
-  }, [providerUrl, providerId, modelsRefresh, settingsSaved])
+  }, [providerUrl, providerId, modelsRefresh])
 
   return {
     models,
