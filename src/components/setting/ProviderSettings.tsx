@@ -1,19 +1,13 @@
+import { useEffect, useRef, useState } from "react"
 import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react"
-import { Play, Plus, RotateCcw, Trash2 } from "lucide-react"
+  CircleAlertIcon,
+  CircleCheckIcon,
+  LoaderCircleIcon,
+  PlusIcon,
+  Trash2Icon,
+} from "lucide-react"
+import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { Button } from "@/src/components/ui/button"
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/src/components/ui/combobox"
 import {
   Dialog,
   DialogContent,
@@ -22,28 +16,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/src/components/ui/dialog"
-import { Field, FieldLabel } from "@/src/components/ui/field"
+import { Field, FieldDescription, FieldLabel } from "@/src/components/ui/field"
 import { Input } from "@/src/components/ui/input"
 import { deleteApiKey, desktop, hasApiKey, setApiKey } from "@/src/lib/api"
 import { errorMessage, isSubmitEnter } from "@/src/lib/utils"
+import { providerModelsView } from "@/src/lib/models"
+import { cn } from "@/src/lib/utils"
 import {
-  addPreset as onAddPreset,
-  refreshModels as onRefreshModels,
-  removePreset as onRemovePreset,
-  renamePreset as onRenamePreset,
-  selectProvider as onSelectPreset,
-  getContext,
-  setProviderUrl,
+  addPreset,
+  presetLabel as label,
+  refreshModels,
+  removePreset,
+  renamePreset,
+  setPresetUrl,
   useChatContext,
 } from "@/src/stores/chat"
+import { useModelsStore } from "@/src/stores/models"
 import { useSettingsStore } from "@/src/stores/settings"
 import type { ProviderPreset } from "@/src/types/chat"
 
 /** `has_api_key` results per provider id, so opening settings doesn't hit the keyring each time. */
 const savedKeys = new Map<string, boolean>()
-
-/** Display name; an emptied name is kept as is but shown as "Untitled". */
-const label = (preset: ProviderPreset) => preset.name.trim() || "Untitled"
 
 /** Never shows the stored key: it only reports whether one is saved. Keyed by provider id. */
 function ApiKeyField({
@@ -132,135 +125,268 @@ function ApiKeyField({
   )
 }
 
+/** The host to tell presets apart in the list; the raw text if it is not a URL. */
+function host(url: string) {
+  try {
+    return new URL(url).host
+  } catch {
+    return url.trim()
+  }
+}
+
+const isHttpUrl = (url: string) => {
+  try {
+    return ["http:", "https:"].includes(new URL(url).protocol)
+  } catch {
+    return false
+  }
+}
+
+function Badge({ children }: { children: string }) {
+  return (
+    <span className="rounded-sm bg-muted px-1 py-px text-[0.65rem] leading-tight font-medium text-muted-foreground uppercase">
+      {children}
+    </span>
+  )
+}
+
+/**
+ * Presets on the left, the one being edited on the right. Choosing a preset
+ * here only picks what to edit: a chat's provider is chosen with its model.
+ */
 export function ProviderSettings() {
   const presets = useSettingsStore((s) => s.presets)
-  const {
-    providerId: activeId,
-    providerUrl,
-    models,
-    modelsLoading,
-    modelsStatus,
-  } = useChatContext()
-  // The URL being typed belongs to one preset, so switching presets drops it.
-  const [urlDraft, setUrlDraft] = useState({ id: activeId, value: providerUrl })
-  const providerUrlInput =
-    urlDraft.id === activeId ? urlDraft.value : providerUrl
-  const setProviderUrlInput = (value: string) =>
-    setUrlDraft({ id: activeId, value })
-  // Closing the dialog (e.g. Escape) unmounts the field without a blur, so commit then.
-  const unsaved = useRef({
-    id: activeId,
-    input: providerUrlInput,
-    url: providerUrl,
-  })
+  const defaults = useSettingsStore((s) => s.defaults)
+  const { providerId: chatProviderId } = useChatContext()
+  const lists = useModelsStore()
+  const [editingId, setEditingId] = useState(
+    () => chatProviderId ?? presets[0]?.id ?? null
+  )
+  const [addedId, setAddedId] = useState<string | null>(null)
+  // A deleted preset falls back to the first one.
+  const editing = presets.find((p) => p.id === editingId) ?? presets[0] ?? null
+  const defaultModelProvider = defaults.model ? defaults.providerId : null
+
+  return (
+    <div className="flex min-h-0 flex-col gap-6 md:flex-row">
+      <nav
+        aria-label="Providers"
+        className="flex shrink-0 flex-col gap-2 md:w-60"
+      >
+        <ul className="flex flex-col gap-1">
+          {presets.map((preset) => {
+            const view = providerModelsView(lists, preset)
+            const current = preset.id === editing?.id
+            return (
+              <li key={preset.id}>
+                <Button
+                  variant={current ? "secondary" : "ghost"}
+                  className="h-auto w-full flex-col items-stretch gap-0.5 py-2 text-left"
+                  aria-current={current ? "true" : undefined}
+                  onClick={() => setEditingId(preset.id)}
+                >
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate">{label(preset)}</span>
+                    {preset.id === chatProviderId && <Badge>In use</Badge>}
+                    {preset.id === defaultModelProvider && (
+                      <Badge>Default</Badge>
+                    )}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1 text-xs font-normal text-muted-foreground">
+                    {view.loading ? (
+                      <LoaderCircleIcon className="size-3 animate-spin" />
+                    ) : view.error ? (
+                      <CircleAlertIcon className="size-3 text-destructive" />
+                    ) : null}
+                    <span className="truncate">
+                      {preset.baseUrl.trim()
+                        ? `${host(preset.baseUrl)}${
+                            view.loading || view.error
+                              ? ""
+                              : ` · ${view.models.length} models`
+                          }`
+                        : "No base URL"}
+                    </span>
+                  </span>
+                </Button>
+              </li>
+            )
+          })}
+        </ul>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const id = addPreset()
+            setEditingId(id)
+            setAddedId(id)
+          }}
+        >
+          <PlusIcon />
+          Add provider
+        </Button>
+        <p className="px-1 text-xs text-muted-foreground">
+          Any OpenAI-compatible endpoint. Models from every provider are listed
+          in the model picker.
+        </p>
+      </nav>
+      {editing ? (
+        <ProviderDetail
+          key={editing.id}
+          preset={editing}
+          isNew={editing.id === addedId}
+        />
+      ) : (
+        <div className="flex flex-1 flex-col items-start gap-2 text-sm text-muted-foreground">
+          <p>No providers yet. Add one to start chatting.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProviderDetail({
+  preset,
+  isNew,
+}: {
+  preset: ProviderPreset
+  isNew: boolean
+}) {
+  const view = providerModelsView(useModelsStore(), preset)
+  // Committed on Enter, blur and unmount, so a URL is never fetched half-typed.
+  const [url, setUrl] = useState(preset.baseUrl)
+  const unsaved = useRef({ url, saved: preset.baseUrl })
   useEffect(() => {
-    unsaved.current = {
-      id: activeId,
-      input: providerUrlInput,
-      url: providerUrl,
-    }
+    unsaved.current = { url, saved: preset.baseUrl }
   })
   useEffect(
     () => () => {
-      const { id, input, url } = unsaved.current
-      // Only into the preset it was typed for.
-      if (id === getContext().providerId && input.trim() !== url)
-        setProviderUrl(input.trim())
+      const { url, saved } = unsaved.current
+      // Closing the dialog (e.g. Escape) unmounts the field without a blur.
+      const exists = useSettingsStore
+        .getState()
+        .presets.some((p) => p.id === preset.id)
+      if (exists && url.trim() !== saved) setPresetUrl(preset.id, url.trim())
     },
-    []
+    [preset.id]
   )
-  const active = presets.find((p) => p.id === activeId) ?? null
+  const commitUrl = () => {
+    if (url.trim() !== preset.baseUrl) setPresetUrl(preset.id, url.trim())
+  }
+  const invalidUrl = url.trim() !== "" && !isHttpUrl(url.trim())
+
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  // A body-level portal counts as outside the Radix dialog, so clicks never select.
-  const [dialog, setDialog] = useState<HTMLElement | null>(null)
-  const dialogRef = useCallback(
-    (node: HTMLElement | null) =>
-      setDialog(
-        node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null
-      ),
-    []
-  )
 
   async function confirmDelete() {
     if (deleting) return
     setDeleting(true)
     setDeleteError(null)
     try {
-      await onRemovePreset()
-      setConfirmingDelete(false)
+      await removePreset(preset.id)
+      // This component unmounts with the preset; nothing to reset.
     } catch (cause) {
       setDeleteError(errorMessage(cause))
-    } finally {
       setDeleting(false)
     }
   }
 
-  function refreshModels() {
-    const url = providerUrlInput.trim()
-    if (url === providerUrl) onRefreshModels()
-    else setProviderUrl(url)
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (!isSubmitEnter(event)) return
-    event.preventDefault()
-    refreshModels()
-  }
+  const committed = url.trim() === preset.baseUrl.trim()
+  const connection =
+    !preset.baseUrl.trim() || !committed ? null : view.loading ? (
+      <span className="flex items-center gap-1">
+        <LoaderCircleIcon className="size-3.5 animate-spin" /> Connecting…
+      </span>
+    ) : view.error ? (
+      <span className="flex items-start gap-1 text-destructive">
+        <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+        <span className="break-words">{view.error}</span>
+      </span>
+    ) : (
+      <span className="flex items-center gap-1">
+        <CircleCheckIcon className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+        Connected · {view.models.length} models
+      </span>
+    )
 
   return (
-    <div ref={dialogRef} className="flex flex-col gap-4">
-      <p id="provider-description" className="text-sm text-muted-foreground">
-        Connect to an OpenAI-compatible endpoint in the Tauri desktop app. API
-        keys are optional for local endpoints. Models are fetched from your
-        endpoint.
-      </p>
+    <section
+      aria-label={`${label(preset)} settings`}
+      className="flex min-w-0 flex-1 flex-col gap-5"
+    >
       <Field>
-        <FieldLabel>Provider</FieldLabel>
-        <div className="flex gap-2">
-          <Combobox
-            items={presets}
-            value={active}
-            itemToStringLabel={label}
-            isItemEqualToValue={(a: ProviderPreset, b: ProviderPreset) =>
-              a.id === b.id
-            }
-            onValueChange={(preset) => preset && onSelectPreset(preset.id)}
-          >
-            <ComboboxInput placeholder="No provider" className="w-full" />
-            <ComboboxContent container={dialog}>
-              <ComboboxList>
-                {(preset: ProviderPreset) => (
-                  <ComboboxItem key={preset.id} value={preset}>
-                    {label(preset)}
-                  </ComboboxItem>
-                )}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
+        <FieldLabel htmlFor="provider-name">Name</FieldLabel>
+        <Input
+          id="provider-name"
+          value={preset.name}
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- a new provider is named first
+          autoFocus={isNew}
+          onFocus={(event) => isNew && event.target.select()}
+          placeholder="Untitled"
+          onChange={(event) => renamePreset(preset.id, event.target.value)}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="provider-url">Base URL</FieldLabel>
+        <Input
+          id="provider-url"
+          type="url"
+          placeholder="http://localhost:1234/v1"
+          aria-invalid={invalidUrl || undefined}
+          aria-describedby="provider-url-status"
+          value={url}
+          onChange={(event) => setUrl(event.target.value)}
+          onKeyDown={(event) => {
+            if (!isSubmitEnter(event)) return
+            event.preventDefault()
+            if (committed) refreshModels(preset.id)
+            else commitUrl()
+          }}
+          onBlur={commitUrl}
+        />
+        <FieldDescription id="provider-url-status" role="status">
+          {invalidUrl
+            ? "Enter a URL starting with http:// or https://."
+            : !committed
+              ? "Press Enter to connect."
+              : (connection ??
+                "The endpoint's /models list is loaded once a URL is entered.")}
+        </FieldDescription>
+      </Field>
+      <ApiKeyField
+        providerId={preset.id}
+        onChanged={() => refreshModels(preset.id)}
+      />
+      <div className="flex min-h-0 flex-col gap-2">
+        <h3 className="text-sm font-medium">Models</h3>
+        <ModelBrowser
+          className="max-h-96"
+          presets={[preset]}
+          groupTitle={() => "Available models"}
+        />
+      </div>
+      <div className="flex flex-col gap-2 rounded-lg border border-destructive/30 p-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-medium">Delete provider</h3>
+            <p className="text-sm text-muted-foreground">
+              Removes this provider and its saved API key.
+            </p>
+          </div>
           <Button
-            size="icon"
-            variant="outline"
-            aria-label="Add provider"
-            onClick={onAddPreset}
-          >
-            <Plus />
-          </Button>
-          <Button
-            size="icon"
-            variant="outline"
-            aria-label="Delete provider"
-            disabled={!active || deleting}
+            variant="destructive"
+            size="sm"
             onClick={() => {
               setDeleteError(null)
               setConfirmingDelete(true)
             }}
           >
-            <Trash2 />
+            <Trash2Icon />
+            Delete
           </Button>
         </div>
-      </Field>
+      </div>
       <Dialog
         open={confirmingDelete}
         onOpenChange={(open) => !deleting && setConfirmingDelete(open)}
@@ -269,12 +395,13 @@ export function ProviderSettings() {
           <DialogHeader>
             <DialogTitle>Delete provider</DialogTitle>
             <DialogDescription>
-              Delete the provider &quot;{active && label(active)}&quot;? Its
-              saved API key is also removed from the system keyring.
+              Delete the provider &quot;{label(preset)}&quot;? Its saved API key
+              is also removed from the system keyring. Chats that use it switch
+              to the default provider.
             </DialogDescription>
           </DialogHeader>
           {deleteError && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className={cn("text-sm text-destructive")}>
               {deleteError}
             </p>
           )}
@@ -296,76 +423,6 @@ export function ProviderSettings() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {active && (
-        <>
-          <Field>
-            <FieldLabel htmlFor="provider-name">Name</FieldLabel>
-            <Input
-              id="provider-name"
-              value={active.name}
-              onChange={(event) => onRenamePreset(event.target.value)}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="provider-url">Base URL</FieldLabel>
-            <Input
-              id="provider-url"
-              type="url"
-              placeholder="http://localhost:1234/v1"
-              value={providerUrlInput}
-              onChange={(event) => setProviderUrlInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={() => {
-                const url = providerUrlInput.trim()
-                if (url !== providerUrl) setProviderUrl(url)
-              }}
-            />
-          </Field>
-          <ApiKeyField
-            key={active.id}
-            providerId={active.id}
-            onChanged={onRefreshModels}
-          />
-        </>
-      )}
-      <Field>
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2 items-center">
-            <FieldLabel>Models</FieldLabel>
-            <p role="status" className="text-sm text-muted-foreground">
-              {modelsStatus}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="default"
-              aria-label="Refresh models"
-              disabled={modelsLoading}
-              onClick={refreshModels}
-            >
-              <Play />
-              <span>Fetch</span>
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="outline"
-              aria-label="Refresh models"
-              disabled={modelsLoading}
-              onClick={refreshModels}
-            >
-              <RotateCcw />
-            </Button>
-          </div>
-        </div>
-        <ul className="flex flex-col gap-1 text-sm">
-          {models.map((model) => (
-            <li key={model.id} className="truncate rounded-md border px-2 py-1">
-              {model.id}
-            </li>
-          ))}
-        </ul>
-      </Field>
-    </div>
+    </section>
   )
 }

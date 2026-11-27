@@ -7,7 +7,7 @@ import type {
   SessionSummary,
   Storage,
 } from "../types/session.ts"
-import { emptyData } from "./sessionDefaults.ts"
+import { emptyData, noChoice, type ModelChoice } from "./sessionDefaults.ts"
 import {
   commit as commitNode,
   createBranch,
@@ -47,7 +47,7 @@ export function createSessionStore(
   const store = createStore<SessionState>(() => ({
     sessions: [],
     activeId: null,
-    data: emptyData("", hooks.defaults()),
+    data: emptyData(noChoice, hooks.defaults()),
     attempts: [],
     restoring: true,
   }))
@@ -120,10 +120,10 @@ export function createSessionStore(
     }
   }
 
-  function reset(model: string) {
+  function reset(current: ModelChoice) {
     cancelSave()
     savedRev = rev
-    apply(emptyData(model, hooks.defaults()))
+    apply(emptyData(current, hooks.defaults()))
     set({ attempts: [] })
     attemptCounter = 0
     activate(null)
@@ -137,7 +137,7 @@ export function createSessionStore(
     /** Lists sessions and reopens `initialId` if it still exists. Runs once; later calls share it. */
     restore(initialId: string | null) {
       restoring ??= (async () => {
-        apply(emptyData("", hooks.defaults())) // defaults were not loaded at creation
+        apply(emptyData(noChoice, hooks.defaults())) // defaults were not loaded at creation
         try {
           const list = await storage.listSessions()
           set({ sessions: list })
@@ -256,13 +256,14 @@ export function createSessionStore(
       show() // reopened while it was stored
     },
 
-    async startNew(model: string) {
+    /** `current` is the chat's model, kept when no default model is set. */
+    async startNew(current: ModelChoice) {
       await flush()
-      reset(model)
+      reset(current)
     },
 
-    async remove(id: string, model: string) {
-      if (id === get().activeId) reset(model)
+    async remove(id: string, current: ModelChoice) {
+      if (id === get().activeId) reset(current)
       await enqueue(() => storage.deleteSession(id))
         .then(refresh)
         .catch(hooks.onError)

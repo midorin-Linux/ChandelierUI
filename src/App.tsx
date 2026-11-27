@@ -11,7 +11,7 @@ import { SidebarProvider } from "@/src/components/ui/sidebar"
 import { AppSidebar } from "@/src/components/AppSidebar"
 import { settingsWriter } from "@/src/lib/api"
 import { init, useChatContext } from "@/src/stores/chat"
-import { loadModels } from "@/src/stores/models"
+import { loadMissingModels } from "@/src/stores/models"
 import { useSettingsStore } from "@/src/stores/settings"
 
 function App() {
@@ -26,11 +26,10 @@ function App() {
 function Chat() {
   const [appSettingsOpen, setAppSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
-  const { providerId, providerUrl, providerMissing } = useChatContext()
-  useEffect(
-    () => void loadModels(providerUrl, providerId),
-    [providerUrl, providerId]
-  )
+  const { providerMissing } = useChatContext()
+  const presets = useSettingsStore((s) => s.presets)
+  // Every provider's models are listed, so each is fetched once its URL is set or changed.
+  useEffect(() => loadMissingModels(presets), [presets])
 
   function openProviderSettings() {
     setSettingsTab("provider")
@@ -77,7 +76,7 @@ function Chat() {
                     className="px-3 pb-1 text-xs text-muted-foreground"
                   >
                     This session&apos;s provider has been deleted. Using the
-                    current provider instead.
+                    default provider instead.
                   </p>
                 )}
                 <MessageBox onOpenProviderSettings={openProviderSettings} />

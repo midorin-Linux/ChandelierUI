@@ -12,11 +12,13 @@ import {
 } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { ScrollArea } from "@/src/components/ui/scroll-area"
+import { SettingsIcon } from "lucide-react"
+import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { Slider } from "@/src/components/ui/slider"
 import { Textarea } from "@/src/components/ui/textarea"
 import { efforts } from "@/src/types/chat"
+import { useSettingsStore } from "@/src/stores/settings"
 import {
-  refreshModels,
   selectModel,
   setEffort,
   setSystemPrompt,
@@ -29,8 +31,15 @@ export function ModelSetting({
 }: {
   onOpenProviderSettings: () => void
 }) {
-  const { models, modelsLoading, modelsStatus, selectedModel } =
-    useChatContext()
+  const {
+    providerId,
+    providerName,
+    models,
+    modelsLoading,
+    modelsStatus,
+    selectedModel,
+  } = useChatContext()
+  const presets = useSettingsStore((s) => s.presets)
   const selectedEffort = useSession((s) => s.data.reasoning_effort)
   const systemPrompt = useSession((s) => s.data.system_prompt)
   return (
@@ -41,41 +50,32 @@ export function ModelSetting({
         </DialogTitle>
       </header>
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <section className="flex w-1/3 min-h-0 min-w-0 flex-col border-r py-2 pr-4">
-          <h2 className="px-2 py-1 text-sm font-medium">Models</h2>
-          <p role="status" className="px-2 py-1 text-sm text-muted-foreground">
-            {modelsStatus}
-          </p>
-          <Button
-            variant="outline"
-            className="my-2"
-            disabled={modelsLoading}
-            onClick={refreshModels}
-          >
-            Refresh models
-          </Button>
-          {models.length === 0 && (
-            <DialogClose asChild>
-              <Button variant="default" onClick={onOpenProviderSettings}>
-                Provider settings
-              </Button>
-            </DialogClose>
+        <section
+          aria-label="Models"
+          className="flex w-2/5 min-h-0 min-w-0 flex-col gap-2 border-r py-3 pr-3 pl-1"
+        >
+          <ModelBrowser
+            className="flex-1"
+            presets={presets}
+            selected={providerId ? { providerId, model: selectedModel } : null}
+            onSelect={selectModel}
+            focusSearch
+          />
+          {(presets.length === 0 || !modelsLoading) && models.length === 0 && (
+            <p role="status" className="px-1 text-sm text-muted-foreground">
+              {modelsStatus}
+            </p>
           )}
-          <ScrollArea className="min-h-0 flex-1 **:data-[slot=scroll-area-scrollbar]:w-1 [**:data-[slot=scroll-area-scrollbar]:border-0[&_[data-slot=scroll-area-scrollbar]]:p-0">
-            <div className="flex flex-col gap-1">
-              {models.map((model) => (
-                <Button
-                  key={model.id}
-                  variant={selectedModel === model.id ? "secondary" : "ghost"}
-                  className="h-auto w-full shrink-0 flex-col items-start justify-start gap-1 py-2 whitespace-normal text-left"
-                  aria-pressed={selectedModel === model.id}
-                  onClick={() => selectModel(model.id)}
-                >
-                  <span className="w-full truncate">{model.id}</span>
-                </Button>
-              ))}
-            </div>
-          </ScrollArea>
+          <DialogClose asChild>
+            <Button
+              variant={presets.length === 0 ? "default" : "outline"}
+              size="sm"
+              onClick={onOpenProviderSettings}
+            >
+              <SettingsIcon />
+              Manage providers
+            </Button>
+          </DialogClose>
         </section>
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
           <div className="px-4 pt-2"></div>
@@ -83,7 +83,16 @@ export function ModelSetting({
             <ScrollArea className="min-h-0 flex-1">
               <Field className="pl-4">
                 <FieldSet>
-                  <FieldLegend>{selectedModel || "Select a model"}</FieldLegend>
+                  <FieldLegend className="flex flex-col gap-0.5">
+                    <span className="truncate">
+                      {selectedModel || "Select a model"}
+                    </span>
+                    {providerName && (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {providerName}
+                      </span>
+                    )}
+                  </FieldLegend>
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="system-prompt">

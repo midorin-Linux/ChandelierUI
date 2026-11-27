@@ -11,7 +11,11 @@ import {
 } from "@/src/components/ui/combobox"
 import { Textarea } from "@/src/components/ui/textarea"
 import { efforts } from "@/src/types/chat"
-import { useChatContext } from "@/src/stores/chat"
+import { presetLabel } from "@/src/stores/chat"
+import { useModelsStore } from "@/src/stores/models"
+import { providerModelsView } from "@/src/lib/models"
+import { ModelBrowser } from "@/src/components/ModelBrowser"
+import { Button } from "@/src/components/ui/button"
 import {
   isTimeoutSecs,
   MAX_TIMEOUT_SECS,
@@ -23,7 +27,6 @@ import { Input } from "@/src/components/ui/input"
 import { Separator } from "@/src/components/ui/separator"
 
 export function GeneralSettings() {
-  const { models } = useChatContext()
   const defaults = useSettingsStore((s) => s.defaults)
   const timeoutSecs = useSettingsStore((s) => s.timeoutSecs)
   const { theme, setTheme } = useTheme()
@@ -36,12 +39,6 @@ export function GeneralSettings() {
       ),
     []
   )
-  // Keep a saved default visible while the list is empty or lacks it.
-  const missingModel =
-    defaults.model !== "" &&
-    !models.some((model) => model.id === defaults.model)
-  const modelIds = models.map((model) => model.id)
-  if (missingModel) modelIds.push(defaults.model)
 
   return (
     <div ref={dialogRef} className="flex flex-col gap-8">
@@ -105,23 +102,24 @@ export function GeneralSettings() {
         </div>
       </div>
 
-      {/*Session*/}
+      {/*New chat*/}
       <div className="flex flex-col gap-3">
-        <h3 className="text-base font-semibold">Session</h3>
-        <div className="flex flex-col gap-2">
-          <div className="text-sm">Default system prompt</div>
-          <Textarea
-            placeholder="You are a helpful assistant."
-            value={defaults.systemPrompt}
-            onChange={(e) => setDefaults({ systemPrompt: e.target.value })}
-          />
+        <div>
+          <h3 className="text-base font-semibold">New chat</h3>
+          <p className="text-sm text-muted-foreground">
+            What a new chat starts with. Changing these never affects existing
+            chats.
+          </p>
         </div>
+        <DefaultModel />
         <Separator />
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="text-sm">Default effort</div>
+            <div id="default-effort-label" className="text-sm">
+              Effort
+            </div>
             <p className="text-sm text-muted-foreground">
-              Reasoning effort for new sessions.
+              Reasoning effort for new chats.
             </p>
           </div>
           <Combobox
@@ -129,7 +127,10 @@ export function GeneralSettings() {
             value={defaults.effort}
             onValueChange={(value) => value && setDefaults({ effort: value })}
           >
-            <ComboboxInput placeholder={"Select an effort..."} />
+            <ComboboxInput
+              aria-labelledby="default-effort-label"
+              placeholder={"Select an effort..."}
+            />
             <ComboboxContent container={dialog}>
               <ComboboxEmpty>No items found.</ComboboxEmpty>
               <ComboboxList>
@@ -143,41 +144,103 @@ export function GeneralSettings() {
           </Combobox>
         </div>
         <Separator />
-        <div className="flex flex-col items-start justify-between gap-2">
-          <div>
-            <div className="text-sm">Default model</div>
-            <p className="text-sm text-muted-foreground">
-              Model ID for new sessions. Leave empty to keep the current model.
-            </p>
-          </div>
-          {missingModel && (
-            <p className="text-sm text-muted-foreground">
-              Not in the current model list.
-            </p>
-          )}
-          <Combobox
-            items={modelIds}
-            value={defaults.model || null}
-            onValueChange={(value) => setDefaults({ model: value ?? "" })}
-          >
-            <ComboboxInput
-              placeholder="Select a model..."
-              showClear
-              className="w-full"
-            />
-            <ComboboxContent container={dialog}>
-              <ComboboxEmpty>No models found.</ComboboxEmpty>
-              <ComboboxList>
-                {(item) => (
-                  <ComboboxItem key={item} value={item}>
-                    {item}
-                  </ComboboxItem>
-                )}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="default-system-prompt" className="text-sm">
+            System prompt
+          </label>
+          <Textarea
+            id="default-system-prompt"
+            placeholder="You are a helpful assistant."
+            value={defaults.systemPrompt}
+            onChange={(e) => setDefaults({ systemPrompt: e.target.value })}
+          />
         </div>
       </div>
+    </div>
+  )
+}
+
+/** The default model is a provider and one of its models, picked together. */
+function DefaultModel() {
+  const defaults = useSettingsStore((s) => s.defaults)
+  const presets = useSettingsStore((s) => s.presets)
+  const lists = useModelsStore()
+  const [picking, setPicking] = useState(false)
+  const preset = defaults.model
+    ? presets.find((p) => p.id === defaults.providerId)
+    : undefined
+  const view = preset ? providerModelsView(lists, preset) : null
+  // Kept while the list is loading or lacks it; the provider may list it again.
+  const missing =
+    view !== null &&
+    !view.loading &&
+    !view.models.some((model) => model.id === defaults.model)
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div id="default-model-label" className="text-sm">
+            Model
+          </div>
+          <p className="text-sm text-muted-foreground">
+            When unset, a new chat keeps the current chat&apos;s model.
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {defaults.model && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDefaults({ model: "" })}
+            >
+              Unset
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={picking}
+            onClick={() => setPicking(!picking)}
+          >
+            {picking ? "Done" : "Change"}
+          </Button>
+        </div>
+      </div>
+      <div
+        aria-labelledby="default-model-label"
+        className="flex min-w-0 flex-col rounded-md border px-3 py-2 text-sm"
+      >
+        {defaults.model ? (
+          <>
+            <span className="truncate">{defaults.model}</span>
+            <span className="text-xs text-muted-foreground">
+              {preset ? presetLabel(preset) : "Unknown provider"}
+              {missing && " · not in this provider's current model list"}
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground">
+            Keep the current chat&apos;s model
+          </span>
+        )}
+      </div>
+      {picking && (
+        <ModelBrowser
+          className="max-h-80 rounded-md border p-2"
+          presets={presets}
+          selected={
+            defaults.model
+              ? { providerId: defaults.providerId, model: defaults.model }
+              : null
+          }
+          onSelect={(providerId, model) => {
+            setDefaults({ providerId, model })
+            setPicking(false)
+          }}
+          focusSearch
+        />
+      )}
     </div>
   )
 }
