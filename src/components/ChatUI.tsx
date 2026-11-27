@@ -479,12 +479,15 @@ function UserMessage({
               }
             }}
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <p className="mr-auto text-xs text-muted-foreground">
+              Saved as a new version; the original stays available.
+            </p>
             <Button variant="outline" onClick={() => setDraft(null)}>
               Cancel
             </Button>
             <Button disabled={!draft.trim() || disabled} onClick={submit}>
-              Send
+              Save &amp; submit
             </Button>
           </div>
         </div>
