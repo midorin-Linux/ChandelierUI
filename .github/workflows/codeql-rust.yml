@@ -1,18 +1,25 @@
 name: "CodeQL (Rust)"
 
 # Split from codeql.yml so it can be path-filtered: the Rust analysis takes
-# 4-7 minutes and is the slowest check, so it only runs when Rust code changes.
-# The weekly schedule still re-analyzes master with updated query packs.
+# 4-7 minutes and is the slowest check, so it only runs when Rust code or
+# Cargo inputs change. The weekly schedule still re-analyzes master with
+# updated query packs.
 on:
   push:
     branches: ["master"]
     paths:
-      - "src-tauri/**"
+      - "src-tauri/**/*.rs"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/migrations/**"
       - ".github/workflows/codeql-rust.yml"
   pull_request:
     branches: ["master"]
     paths:
-      - "src-tauri/**"
+      - "src-tauri/**/*.rs"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/migrations/**"
       - ".github/workflows/codeql-rust.yml"
   schedule:
     - cron: "25 10 * * 0"
@@ -29,11 +36,17 @@ jobs:
   analyze:
     name: Analyze (rust)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write # upload CodeQL results as code scanning alerts
       packages: read # fetch internal or private CodeQL packs
       actions: read # only required for workflows in private repositories
       contents: read # check out the repository
+    env:
+      # Keeps the extractor's internal cargo builds (build scripts, proc macros)
+      # smaller and faster to compile, restore, and save.
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_INCREMENTAL: 0
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,17 +61,25 @@ jobs:
         id: target
         run: |
           echo "CODEQL_EXTRACTOR_RUST_OPTION_CARGO_TARGET_DIR=$RUNNER_TEMP/codeql-cargo-target" >> "$GITHUB_ENV"
-          echo "path=$RUNNER_TEMP/codeql-cargo-target" >> "$GITHUB_OUTPUT"
-          echo "rustc=$(rustc --version | tr -c '[:alnum:].\n' '-')" >> "$GITHUB_OUTPUT"
+          {
+            echo "path=$RUNNER_TEMP/codeql-cargo-target"
+            echo "rustc=$(rustc --version | tr -c '[:alnum:].\n' '-')"
+          } >> "$GITHUB_OUTPUT"
 
       # Same policy as ci.yml: only master writes the cache, PRs restore it.
-      - name: Restore extractor cargo target
+      # Caching ~/.cargo/registry avoids re-downloading and unpacking all crates
+      # from crates.io during extractor LoadSource on every run.
+      - name: Restore extractor cargo cache
         id: target-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ steps.target.outputs.path }}
-          key: codeql-rust-target-${{ runner.os }}-${{ steps.target.outputs.rustc }}-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: codeql-rust-target-${{ runner.os }}-${{ steps.target.outputs.rustc }}-
+          path: |
+            ${{ steps.target.outputs.path }}
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/registry/src
+          key: codeql-rust-v2-${{ runner.os }}-${{ steps.target.outputs.rustc }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: codeql-rust-v2-${{ runner.os }}-${{ steps.target.outputs.rustc }}-
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
@@ -71,9 +92,13 @@ jobs:
         with:
           category: "/language:rust"
 
-      - name: Save extractor cargo target
+      - name: Save extractor cargo cache
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && steps.target-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ steps.target.outputs.path }}
+          path: |
+            ${{ steps.target.outputs.path }}
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/registry/src
           key: ${{ steps.target-cache.outputs.cache-primary-key }}

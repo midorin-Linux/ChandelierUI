@@ -2,8 +2,14 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - LICENSE
   push:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - LICENSE
 
 # Superseded PR runs are cancelled. Runs on master are not: they are the only
 # runs that write caches, and a cancelled run saves nothing.
@@ -11,8 +17,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-permissions:
-  contents: read
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,13 +32,146 @@ env:
 #   prebuilt binaries and would gain little from one.
 
 jobs:
+  # Determines which areas changed via the GitHub API (no checkout needed) so
+  # unaffected jobs are skipped instead of provisioning runners and caches.
+  # Falls back to running everything if the file list cannot be determined.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      rustfmt: ${{ steps.filter.outputs.rustfmt }}
+      deny: ${{ steps.filter.outputs.deny }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+      dependencies: ${{ steps.filter.outputs.dependencies }}
+    steps:
+      - name: Detect changed areas
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          all_true() {
+            {
+              echo "rust=true"
+              echo "rustfmt=true"
+              echo "deny=true"
+              echo "frontend=true"
+              echo "workflows=true"
+              echo "dependencies=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          files=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if ! files=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename'); then
+              all_true
+            fi
+          elif [ "$EVENT_NAME" = "push" ]; then
+            if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              all_true
+            fi
+            if ! files=$(gh api "repos/${REPO}/compare/${BEFORE_SHA}...${AFTER_SHA}" --jq '.files[].filename'); then
+              all_true
+            fi
+            # GitHub's compare API returns at most 300 files; fall back if truncated.
+            if [ "$(printf '%s\n' "$files" | wc -l)" -ge 300 ]; then
+              all_true
+            fi
+          else
+            all_true
+          fi
+
+          if [ -z "$files" ]; then
+            all_true
+          fi
+
+          rust=false
+          rustfmt=false
+          deny=false
+          frontend=false
+          workflows=false
+          dependencies=false
+
+          while IFS= read -r file; do
+            case "$file" in
+              .github/workflows/ci.yml)
+                all_true
+                ;;
+              .github/workflows/*)
+                workflows=true
+                dependencies=true
+                ;;
+              .github/*)
+                workflows=true
+                ;;
+              src-tauri/Cargo.toml | src-tauri/Cargo.lock)
+                rust=true
+                deny=true
+                dependencies=true
+                ;;
+              src-tauri/deny.toml)
+                deny=true
+                ;;
+              src-tauri/rustfmt.toml)
+                rustfmt=true
+                ;;
+              src-tauri/*.rs)
+                rust=true
+                rustfmt=true
+                ;;
+              src-tauri/*)
+                rust=true
+                ;;
+              src/bindings.ts)
+                # Verified by both the frontend build and src-tauri/tests/bindings.rs.
+                rust=true
+                frontend=true
+                ;;
+              .agents/* | .claude/*)
+                ;;
+              package.json | pnpm-lock.yaml)
+                frontend=true
+                dependencies=true
+                ;;
+              src/* | public/* | index.html | pnpm-workspace.yaml | vite.config.ts | eslint.config.ts | tsconfig*.json | .nvmrc | components.json | *.js | *.mjs | *.cjs | *.ts | *.mts | *.cts | *.jsx | *.tsx)
+                frontend=true
+                ;;
+            esac
+          done <<< "$files"
+
+          {
+            echo "rust=$rust"
+            echo "rustfmt=$rustfmt"
+            echo "deny=$deny"
+            echo "frontend=$frontend"
+            echo "workflows=$workflows"
+            echo "dependencies=$dependencies"
+          } >> "$GITHUB_OUTPUT"
+
   # Kept separate from `rust`: it needs nightly rustfmt, and rust-cache hashes the
   # version of every installed toolchain into its key. A nightly toolchain in the
   # cached job would change the key daily and make every run a cache miss.
   rustfmt:
     name: rustfmt
+    needs: changes
+    if: needs.changes.outputs.rustfmt == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,14 +189,22 @@ jobs:
 
   rust:
     name: rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
     env:
       # Debug info roughly halves target/ (measured locally: 3.5 GB -> 1.7 GB for
       # clippy + test), which keeps the cache small and fast to restore.
       CARGO_PROFILE_DEV_DEBUG: 0
       # rust-cache also sets this; set here so it is explicit and part of the key.
       CARGO_INCREMENTAL: 0
+      # Minimal Linux libraries required for `cargo clippy` and `cargo test`.
+      # Bundler-only packages (librsvg2-dev, libxdo-dev) and tools preinstalled
+      # on ubuntu-latest (gcc, make, file, wget, libssl-dev) are omitted.
+      APT_PACKAGES: libdbus-1-dev libgtk-3-dev libwebkit2gtk-4.1-dev
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,42 +213,52 @@ jobs:
 
       # Downloads from the Ubuntu mirror are sometimes very slow (63.8 MB at
       # ~250 kB/s, 4-5 minutes), so the .deb files are cached. Package versions
-      # follow the runner image, and the package list lives in this file, so
-      # both are part of the key; an older image's cache is still restored and
-      # apt downloads only what changed.
+      # follow the runner image, and APT_PACKAGES is hashed into the key so
+      # unrelated edits to ci.yml do not bust the cache.
       - name: Get runner image version
         id: image
         run: |
-          echo "os=$ImageOS" >> "$GITHUB_OUTPUT"
-          echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
+          {
+            echo "os=$ImageOS"
+            echo "version=$ImageVersion"
+            echo "pkgs=$(printf '%s' "$APT_PACKAGES" | sha256sum | cut -c1-12)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Restore apt packages
         id: apt-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/apt-archives
-          key: apt-${{ steps.image.outputs.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: apt-${{ steps.image.outputs.os }}-
+          key: apt-${{ steps.image.outputs.os }}-${{ steps.image.outputs.pkgs }}-${{ steps.image.outputs.version }}
+          restore-keys: apt-${{ steps.image.outputs.os }}-${{ steps.image.outputs.pkgs }}-
 
-      # The package list follows https://v2.tauri.app/start/prerequisites/#linux
       # /var/cache/apt/archives is root-owned and holds a lock file that
       # actions/cache cannot read, so packages are copied to ~/apt-archives.
+      # On an exact cache hit for the same runner image, install the cached
+      # .deb files directly without `apt-get update` or network access; fall
+      # back to an online install if anything is missing.
       - name: Install Tauri system dependencies
+        env:
+          APT_CACHE_HIT: ${{ steps.apt-cache.outputs.cache-hit }}
         run: |
+          read -ra pkgs <<< "$APT_PACKAGES"
           if compgen -G "$HOME/apt-archives/*.deb" > /dev/null; then
             sudo cp "$HOME"/apt-archives/*.deb /var/cache/apt/archives/
+            if [ "$APT_CACHE_HIT" = "true" ]; then
+              if sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l \
+                apt-get install -y --no-download --no-install-recommends \
+                -o DPkg::Options::=--force-unsafe-io \
+                /var/cache/apt/archives/*.deb; then
+                exit 0
+              fi
+            fi
           fi
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends -o APT::Keep-Downloaded-Packages=true \
-            build-essential \
-            file \
-            libayatana-appindicator3-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            libssl-dev \
-            libwebkit2gtk-4.1-dev \
-            libxdo-dev \
-            wget
+          sudo DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=l \
+            apt-get install -y --no-install-recommends \
+            -o APT::Keep-Downloaded-Packages=true \
+            -o DPkg::Options::=--force-unsafe-io \
+            "${pkgs[@]}"
 
       # autoclean drops .deb files no longer in the package index, so a cache
       # restored from an older image does not grow without bound.
@@ -122,11 +278,16 @@ jobs:
           key: ${{ steps.apt-cache.outputs.cache-primary-key }}
 
       # Must run before rust-cache: the installed toolchains are part of its key.
-      - name: Install Rust toolchain
+      # Reuse the runner's preinstalled stable toolchain + clippy when present
+      # to avoid network checks and mid-cycle cache churn.
+      - name: Ensure Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component clippy
-          rustup default stable
-          rustup toolchain list
+          if ! rustup toolchain list | grep -qE '^stable.*\bdefault\b' \
+            || ! rustup component list --toolchain stable --installed | grep -q '^clippy'; then
+            rustup toolchain install stable --profile minimal --component clippy
+            rustup default stable
+          fi
+          rustc --version
 
       # The key changes only with Cargo.lock / Cargo.toml, the stable rustc
       # version, or CARGO_* / RUST* env vars. On a partial match a PR restores
@@ -149,8 +310,12 @@ jobs:
 
   frontend:
     name: frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -161,8 +326,12 @@ jobs:
       # of truth); do not add a `version:` input, action-setup fails on a mismatch.
       # Dependabot's documentation does not list "packageManager" as a field it
       # updates, so bump it by hand (with its sha512) when upgrading pnpm.
+      # standalone installs the prebuilt binary directly instead of npm-installing
+      # pnpm and then self-updating to @pnpm/exe.
       - name: Set up pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        with:
+          standalone: true
 
       # setup-node's built-in cache saves on every lockfile change, including in
       # PRs, and cannot be limited to master; the store is cached explicitly below.
@@ -187,10 +356,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
-        run: pnpm lint
-
-      # Saved right after install so a failing test or build still refreshes it.
+      # Saved right after install so a failing lint, test or build still refreshes it.
       # Pruning first drops packages no longer in the lockfile, so a store restored
       # from an older key does not grow without bound.
       - name: Prune pnpm store
@@ -204,17 +370,57 @@ jobs:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ steps.pnpm-cache.outputs.cache-primary-key }}
 
-      - name: Test
-        run: pnpm test
+      # Run independent checks concurrently across the runner's CPUs and replay
+      # each command's log cleanly in its own group.
+      - name: Lint, test, typecheck and build
+        run: |
+          set -euo pipefail
+          out_dir="$RUNNER_TEMP/frontend-ci"
+          mkdir -p "$out_dir"
 
-      # The build script runs `tsc` before `vite build`, so this also type-checks.
-      - name: Build
-        run: pnpm build
+          pnpm lint >"$out_dir/lint.log" 2>&1 &
+          pid_lint=$!
+          pnpm test >"$out_dir/test.log" 2>&1 &
+          pid_test=$!
+          pnpm exec tsc >"$out_dir/tsc.log" 2>&1 &
+          pid_tsc=$!
+          pnpm exec tsc -p tsconfig.test.json >"$out_dir/tsc-test.log" 2>&1 &
+          pid_tsc_test=$!
+          pnpm exec vite build >"$out_dir/build.log" 2>&1 &
+          pid_build=$!
+
+          status=0
+          check() {
+            local name="$1"
+            local pid="$2"
+            local log="$3"
+            local rc=0
+            wait "$pid" || rc=$?
+            echo "::group::$name"
+            cat "$log"
+            echo "::endgroup::"
+            if [ "$rc" -ne 0 ]; then
+              echo "::error::$name failed (exit code $rc)"
+              status=1
+            fi
+          }
+
+          check "Lint" "$pid_lint" "$out_dir/lint.log"
+          check "Test" "$pid_test" "$out_dir/test.log"
+          check "Typecheck" "$pid_tsc" "$out_dir/tsc.log"
+          check "Typecheck (tests)" "$pid_tsc_test" "$out_dir/tsc-test.log"
+          check "Build" "$pid_build" "$out_dir/build.log"
+
+          exit "$status"
 
   deny:
     name: deny
+    needs: changes
+    if: needs.changes.outputs.deny == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -233,9 +439,12 @@ jobs:
 
   dependency-review:
     name: dependency-review
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.dependencies == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -247,28 +456,16 @@ jobs:
         with:
           fail-on-severity: high
 
-  actionlint:
-    name: actionlint
+  # Runs both workflow linters on one runner using prebuilt binaries instead of
+  # compiling actionlint from Go source and provisioning two separate runners.
+  workflows:
+    name: workflows
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      # Go is preinstalled on ubuntu-latest; module hashes are verified by the Go checksum DB.
-      - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-
-      - name: Run actionlint
-        run: |
-          "$(go env GOPATH)/bin/actionlint" -color
-
-  zizmor:
-    name: zizmor
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -279,6 +476,25 @@ jobs:
         uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: zizmor
+
+      # Download the prebuilt release archive with a pinned SHA-256 checksum
+      # instead of compiling actionlint from Go source (~15s -> <1s).
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            -o "$archive"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Run actionlint
+        run: actionlint -color
 
       - name: Run zizmor
         env:
