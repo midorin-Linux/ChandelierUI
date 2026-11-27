@@ -12,18 +12,19 @@ import {
   completionStream,
   type CompletionStream,
 } from "@/src/lib/completionStream"
-import { modelsView, type ModelList } from "@/src/lib/models"
+import { modelsView, type ModelLists } from "@/src/lib/models"
 import {
   add,
   deletePreset,
   sessionProvider,
+  uniqueName,
   update,
 } from "@/src/lib/providerPresets"
 import { retryHead } from "@/src/lib/retry"
 import { createSessionStore, type SessionState } from "@/src/lib/sessionStore"
 import { pathToRoot } from "@/src/lib/sessionTree"
 import { errorMessage } from "@/src/lib/utils"
-import { loadModels, useModelsStore } from "@/src/stores/models"
+import { forgetModels, loadModels, useModelsStore } from "@/src/stores/models"
 import {
   loadSettings,
   setDefaults,
@@ -93,7 +94,7 @@ function deriveContext(
   presets: ProviderPreset[],
   defaults: SessionDefaults,
   data: Pick<SessionData, "provider_id" | "model">,
-  list: ModelList
+  lists: ModelLists
 ) {
   // The session's own preset, else the new-chat default (`provider.active_id`).
   const { id: providerId, missing: providerMissing } = sessionProvider(
@@ -101,12 +102,13 @@ function deriveContext(
     data.provider_id,
     defaults.providerId
   )
-  const providerUrl = presets.find((p) => p.id === providerId)?.baseUrl ?? ""
-  const view = modelsView(list, providerUrl, providerId, data.model)
+  const preset = presets.find((p) => p.id === providerId) ?? null
+  const view = modelsView(lists, preset, data.model)
   return {
     providerId,
     providerMissing,
-    providerUrl,
+    providerUrl: preset?.baseUrl ?? "",
+    providerName: preset ? presetLabel(preset) : "",
     ...view,
     canSend: !view.modelsLoading && view.selectedModel !== "",
   }
@@ -130,16 +132,16 @@ export function useChatContext(): ChatContext {
   const defaults = useSettingsStore((s) => s.defaults)
   const providerIdSaved = useSession((s) => s.data.provider_id)
   const model = useSession((s) => s.data.model)
-  const list = useModelsStore()
+  const lists = useModelsStore()
   return useMemo(
     () =>
       deriveContext(
         presets,
         defaults,
         { provider_id: providerIdSaved, model },
-        list
+        lists
       ),
-    [presets, defaults, providerIdSaved, model, list]
+    [presets, defaults, providerIdSaved, model, lists]
   )
 }
 
@@ -451,13 +453,19 @@ function switchSession(action: () => Promise<void>) {
     .finally(() => useChatStore.setState({ switching: false }))
 }
 
+/** The chat's model and provider, kept by a new chat when no default model is set. */
+function currentChoice() {
+  const { providerId, selectedModel } = getContext()
+  return { providerId, model: selectedModel }
+}
+
 export const newSession = () =>
-  switchSession(() => session.startNew(getContext().selectedModel))
+  switchSession(() => session.startNew(currentChoice()))
 export const openSession = (id: string) => switchSession(() => session.open(id))
 export function deleteSession(id: string) {
   const { sending, streamSessionId } = useChatStore.getState()
   if (sending && id === streamSessionId) return // its reply still has to be saved
-  switchSession(() => session.remove(id, getContext().selectedModel))
+  switchSession(() => session.remove(id, currentChoice()))
 }
 export const renameSession = (id: string, title: string) =>
   void session.rename(id, title)
@@ -467,55 +475,84 @@ export const setEffort = (effort: SessionData["reasoning_effort"]) =>
 export const setSystemPrompt = (prompt: string) =>
   session.edit({ system_prompt: prompt })
 
-export function selectModel(model: string) {
-  const { modelsLoading, models } = getContext()
-  if (modelsLoading || !models.some((entry) => entry.id === model)) return
-  session.edit({ model })
+/** Switches the chat to `model` of provider `providerId`, once that provider lists it. */
+export function selectModel(providerId: string, model: string) {
+  const { presets } = useSettingsStore.getState()
+  const preset = presets.find((p) => p.id === providerId)
+  const view = preset && modelsView(useModelsStore.getState(), preset, model)
+  if (!view || view.modelsLoading || view.selectedModel !== model) return
+  session.edit({ provider_id: providerId, model })
 }
 
-export function refreshModels() {
-  const { providerUrl, providerId } = getContext()
-  void loadModels(providerUrl, providerId)
+const findPreset = (id: string) =>
+  useSettingsStore.getState().presets.find((p) => p.id === id)
+
+/** Refetches one provider's models. */
+export function refreshModels(id: string) {
+  const preset = findPreset(id)
+  if (preset) void loadModels(preset)
+}
+
+/** Refetches every provider's models. */
+export function refreshAllModels() {
+  for (const preset of useSettingsStore.getState().presets)
+    void loadModels(preset)
 }
 
 // ---- Provider presets -----------------------------------------------------
+// Editing a preset never changes which provider a chat uses: that is chosen
+// with the model (`selectModel`), and for new chats with the default model.
 
-/** An explicit choice: saved to the session, and the default for new chats. */
-export function selectProvider(id: string | null) {
-  session.edit({ provider_id: id })
-  setDefaults({ providerId: id })
-}
+/** Display name; an emptied name is kept as is but shown as "Untitled". */
+export const presetLabel = (preset: ProviderPreset) =>
+  preset.name.trim() || "Untitled"
 
-/** Only called when the URL is confirmed (Enter / Fetch / close). */
-export function setProviderUrl(url: string) {
-  const { providerId } = getContext()
+/** Only called when the URL is confirmed (Enter / blur / close). */
+export function setPresetUrl(id: string, url: string) {
   const { presets } = useSettingsStore.getState()
-  if (providerId) setPresets(update(presets, providerId, { baseUrl: url }))
+  setPresets(update(presets, id, { baseUrl: url }))
 }
 
-export function renamePreset(name: string) {
-  const { providerId } = getContext()
+export function renamePreset(id: string, name: string) {
   const { presets } = useSettingsStore.getState()
-  if (providerId) setPresets(update(presets, providerId, { name }), true)
+  setPresets(update(presets, id, { name }), true)
 }
 
-export function addPreset() {
-  const preset = { id: crypto.randomUUID(), name: "New provider", baseUrl: "" }
-  setPresets(add(useSettingsStore.getState().presets, preset))
-  selectProvider(preset.id)
+/**
+ * Adds a preset, from a template or blank, and returns its id.
+ * The first preset also becomes the default provider.
+ */
+export function addPreset(
+  template: Omit<ProviderPreset, "id"> = { name: "New provider", baseUrl: "" }
+) {
+  const { presets, defaults } = useSettingsStore.getState()
+  const preset = {
+    id: crypto.randomUUID(),
+    name: uniqueName(presets, template.name),
+    baseUrl: template.baseUrl,
+  }
+  setPresets(add(presets, preset))
+  if (!defaults.providerId || !findPreset(defaults.providerId))
+    setDefaults({ providerId: preset.id })
+  return preset.id
 }
 
-/** Rejects (keeping the preset) when the key cannot be deleted. */
-export async function removePreset() {
-  const { providerId } = getContext()
-  if (!providerId) return
+/**
+ * Rejects (keeping the preset) when the key cannot be deleted. Deleting the
+ * default model's provider clears the default model; chats that used it fall
+ * back to the default provider.
+ */
+export async function removePreset(id: string) {
+  const { presets, defaults } = useSettingsStore.getState()
   // The browser preview has no keyring, so only the preset goes.
   const next = await deletePreset(
-    useSettingsStore.getState().presets,
-    providerId,
-    providerId,
+    presets,
+    defaults.providerId,
+    id,
     deleteApiKey
   )
   setPresets(next.presets)
-  selectProvider(next.activeId)
+  if (next.activeId !== defaults.providerId)
+    setDefaults({ providerId: next.activeId, model: "" })
+  forgetModels(id)
 }

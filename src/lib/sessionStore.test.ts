@@ -88,7 +88,7 @@ test("session store", async (t) => {
   await t.test("leaving a session flushes a pending edit", async () => {
     // Leaving a session flushes a pending edit.
     session.edit({ system_prompt: "be terse" })
-    await session.startNew("model-a")
+    await session.startNew({ providerId: null, model: "model-a" })
     assert(state().activeId === null, "startNew clears the active session")
     second = await session.persist(node("second"), "model-a", null)
     assert(second !== first, "a new chat gets its own session")

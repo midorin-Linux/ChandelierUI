@@ -4,12 +4,13 @@ import { DialogContent, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { GeneralSettings } from "@/src/components/setting/GeneralSettings"
 import { ProviderSettings } from "@/src/components/setting/ProviderSettings"
+import { SaveStatus } from "@/src/components/setting/SaveStatus"
 
 export type SettingsTab = "general" | "provider"
 
 const tabs: { id: SettingsTab; label: string; icon: ComponentType }[] = [
   { id: "general", label: "General", icon: SettingsIcon },
-  { id: "provider", label: "Provider", icon: ServerIcon },
+  { id: "provider", label: "Providers", icon: ServerIcon },
 ]
 
 export function AppSetting({
@@ -22,20 +23,22 @@ export function AppSetting({
   const current = tabs.find(({ id }) => id === tab)!
 
   return (
-    <DialogContent className="flex aspect-16/10 w-[min(80rem,calc(100%-2rem),calc((100dvh-2rem)*16/10))] flex-col overflow-hidden sm:max-w-none">
-      <header className="border-b px-4 py-4 pr-14">
+    <DialogContent className="flex h-[min(52rem,calc(100dvh-2rem))] w-[min(76rem,calc(100%-2rem))] flex-col overflow-hidden sm:max-w-none">
+      <header className="flex items-center justify-between gap-4 border-b px-4 py-4 pr-14">
         <DialogTitle className="text-lg font-semibold">Settings</DialogTitle>
+        <SaveStatus />
       </header>
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      {/* Side navigation on wide windows, a row of tabs above the content on narrow ones. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         <nav
           aria-label="Settings sections"
-          className="flex w-1/4 min-w-0 flex-col gap-1 overflow-y-auto border-r py-2 pr-4"
+          className="flex shrink-0 gap-1 overflow-x-auto border-b pb-2 md:w-48 md:flex-col md:overflow-y-auto md:border-r md:border-b-0 md:py-2 md:pr-4"
         >
           {tabs.map(({ id, label, icon: Icon }) => (
             <Button
               key={id}
               variant={tab === id ? "secondary" : "ghost"}
-              className="w-full justify-start"
+              className="justify-start md:w-full"
               aria-current={tab === id ? "page" : undefined}
               onClick={() => onTabChange(id)}
             >
@@ -44,7 +47,7 @@ export function AppSetting({
             </Button>
           ))}
         </nav>
-        <section className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 pl-6">
+        <section className="min-h-0 min-w-0 flex-1 overflow-y-auto py-4 md:p-4 md:pl-6">
           <h2 className="mb-4 text-lg font-semibold">{current.label}</h2>
           {tab === "general" && <GeneralSettings />}
           {tab === "provider" && <ProviderSettings />}

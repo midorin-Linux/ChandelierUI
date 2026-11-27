@@ -17,7 +17,7 @@ const SETTING_DEFAULT_PROMPT = "session.default_system_prompt"
 const SETTING_TIMEOUT = "chat.timeout_secs" // read by the backend
 
 // Keep in step with the backend's default and accepted range.
-const DEFAULT_TIMEOUT_SECS = 120
+export const DEFAULT_TIMEOUT_SECS = 120
 export const MAX_TIMEOUT_SECS = 3600
 export const isTimeoutSecs = (value: unknown): value is number =>
   Number.isInteger(value) &&
