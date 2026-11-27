@@ -1,5 +1,6 @@
 import {
   Field,
+  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -74,10 +75,9 @@ export function ModelSetting() {
           </DialogClose>
         </section>
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="px-4 pt-2"></div>
           <div className="flex min-h-0 flex-1 flex-col justify-between">
             <ScrollArea className="min-h-0 flex-1">
-              <Field className="pl-4">
+              <Field className="pt-2 pl-4">
                 <FieldSet>
                   <FieldLegend className="flex flex-col gap-0.5">
                     <span className="truncate">
@@ -92,10 +92,25 @@ export function ModelSetting() {
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="system-prompt">
-                        System prompt
+                        System prompt for this chat
                       </FieldLabel>
+                      <FieldDescription id="system-prompt-hint">
+                        Applies to this chat only. New chats start with the
+                        default from{" "}
+                        <DialogClose asChild>
+                          <Button
+                            variant="link"
+                            className="h-auto p-0 font-normal"
+                            onClick={() => openSettings("general")}
+                          >
+                            General settings
+                          </Button>
+                        </DialogClose>
+                        .
+                      </FieldDescription>
                       <Textarea
                         id="system-prompt"
+                        aria-describedby="system-prompt-hint"
                         placeholder="You are a helpful assistant."
                         value={systemPrompt}
                         onChange={(event) =>
