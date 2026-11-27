@@ -1,5 +1,5 @@
 import "./App.css"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { Analysis } from "@/src/components/Analysis"
 import { TitleBar } from "@/src/components/TitleBar"
 import { ChatUI, EmptyConversation } from "@/src/components/ChatUI"
@@ -44,6 +44,16 @@ function Chat() {
   const restoring = useSession((s) => s.restoring)
   const messageCount = useMessages().length
   const empty = !restoring && messageCount === 0
+  // Animate only moves the user causes, not the first placement after startup.
+  const [animate, setAnimate] = useState(false)
+  useEffect(() => {
+    if (restoring) return
+    // Two frames: the composer's height is measured in the first.
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => setAnimate(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [restoring])
   const presets = useSettingsStore((s) => s.presets)
   // Every provider's models are listed, so each is fetched once its URL is set or changed.
   useEffect(() => loadMissingModels(presets), [presets])
@@ -74,9 +84,15 @@ function Chat() {
             <div className="relative flex min-h-0 w-full flex-1 flex-col">
               <ChatUI />
               <div
+                // Positioned by `bottom` in both states so the move can be animated
+                // (top/bottom cannot). Centered: half the free height below it.
                 className={cn(
                   "absolute left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent",
-                  empty ? "top-1/2 -translate-y-1/2" : "bottom-0"
+                  animate &&
+                    "transition-[bottom] duration-500 ease-in-out motion-reduce:transition-none",
+                  empty
+                    ? "bottom-[calc(50%-var(--composer-height,0px)/2)]"
+                    : "bottom-0"
                 )}
                 ref={(node) => {
                   if (!node) return
