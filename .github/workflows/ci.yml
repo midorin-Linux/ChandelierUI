@@ -293,7 +293,6 @@ jobs:
       # version, or CARGO_* / RUST* env vars. On a partial match a PR restores
       # the closest master entry and rebuilds only what changed.
       - name: Cache Cargo
-        id: rust-cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: src-tauri
@@ -301,18 +300,12 @@ jobs:
           # Nothing is installed into ~/.cargo/bin by this job.
           cache-bin: false
 
-      # Keep CARGO_NET_OFFLINE scoped to cargo invocations so it is not hashed
-      # into rust-cache's environment key.
       - name: Clippy
         working-directory: src-tauri
-        env:
-          CARGO_NET_OFFLINE: ${{ steps.rust-cache.outputs.cache-hit == 'true' }}
         run: cargo clippy --all-targets --all-features --locked -- -D warnings
 
       - name: Test
         working-directory: src-tauri
-        env:
-          CARGO_NET_OFFLINE: ${{ steps.rust-cache.outputs.cache-hit == 'true' }}
         run: cargo test --locked
 
   frontend:
@@ -479,10 +472,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install actionlint and zizmor
+      - name: Install zizmor
         uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
-          tool: actionlint,zizmor
+          tool: zizmor
+
+      # Download the prebuilt release archive with a pinned SHA-256 checksum
+      # instead of compiling actionlint from Go source (~15s -> <1s).
+      - name: Install actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl -fsSL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            -o "$archive"
+          echo "${ACTIONLINT_SHA256}  ${archive}" | sha256sum -c -
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
       - name: Run actionlint
         run: actionlint -color
