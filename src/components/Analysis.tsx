@@ -322,8 +322,8 @@ export function Analysis() {
                   <Note>
                     Timings are backend monotonic measurements. Connection
                     phases and server prefill/decode are unavailable when not
-                    exposed; TTFT is not a prefill measurement. Streaming is the
-                    transport; the chat reply is displayed after completion.
+                    exposed; TTFT is not a prefill measurement. The reply is
+                    shown as it streams in.
                   </Note>
                 </>
               )}
