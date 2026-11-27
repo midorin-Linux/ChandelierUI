@@ -28,13 +28,16 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
+  SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
 } from "@/src/components/ui/sidebar"
+import { groupSessions } from "@/src/lib/sessionGroups"
 import { isSubmitEnter } from "@/src/lib/utils"
 import {
   deleteSession as onDelete,
@@ -54,6 +57,8 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const streamingId = useStreamingSessionId()
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<SessionSummary | null>(null)
+  const [query, setQuery] = useState("")
+  const groups = groupSessions(sessions, query)
 
   function finishRename(id: string, title: string) {
     setRenamingId(null)
@@ -86,79 +91,104 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-            <SidebarMenu>
-              {sessions.map((session) => (
-                <SidebarMenuItem key={session.id}>
-                  {renamingId === session.id ? (
-                    <Input
-                      ref={(node) => node?.focus()}
-                      aria-label="Chat title"
-                      defaultValue={session.title}
-                      onBlur={(event) => {
-                        // Enter/Escape already finished; unmounting may blur again.
-                        if (!event.target.dataset.done) {
-                          finishRename(session.id, event.target.value)
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          event.currentTarget.dataset.done = "1"
-                          setRenamingId(null)
-                        } else if (isSubmitEnter(event)) {
-                          event.currentTarget.dataset.done = "1"
-                          finishRename(session.id, event.currentTarget.value)
-                        }
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <SidebarMenuButton
-                        isActive={session.id === activeId}
-                        disabled={disabled}
-                        onClick={() => onSelect(session.id)}
-                      >
-                        {session.id === streamingId && (
-                          <LoaderCircleIcon
-                            className="animate-spin text-muted-foreground"
-                            aria-label="Generating a reply"
-                          />
-                        )}
-                        <span className="truncate">
-                          {session.title || "Untitled"}
-                        </span>
-                      </SidebarMenuButton>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <SidebarMenuAction
-                            showOnHover
-                            aria-label="Chat actions"
-                          >
-                            <MoreHorizontalIcon />
-                          </SidebarMenuAction>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuItem
-                            onSelect={() => setRenamingId(session.id)}
-                          >
-                            <PencilIcon />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={disabled || session.id === streamingId}
-                            onSelect={() => setDeleting(session)}
-                          >
-                            <Trash2Icon />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
-                  )}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
+          {sessions.length > 0 && (
+            <div className="px-2 group-data-[collapsible=icon]:hidden">
+              <SidebarInput
+                type="search"
+                aria-label="Search chats"
+                placeholder="Search chats"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") setQuery("")
+                }}
+              />
+            </div>
+          )}
+          {query.trim() && groups.length === 0 && (
+            <p className="px-4 py-2 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
+              No chats match.
+            </p>
+          )}
+          {groups.map((group) => (
+            <SidebarGroup
+              key={group.label}
+              className="group-data-[collapsible=icon]:hidden"
+            >
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarMenu>
+                {group.sessions.map((session) => (
+                  <SidebarMenuItem key={session.id}>
+                    {renamingId === session.id ? (
+                      <Input
+                        ref={(node) => node?.focus()}
+                        aria-label="Chat title"
+                        defaultValue={session.title}
+                        onBlur={(event) => {
+                          // Enter/Escape already finished; unmounting may blur again.
+                          if (!event.target.dataset.done) {
+                            finishRename(session.id, event.target.value)
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.currentTarget.dataset.done = "1"
+                            setRenamingId(null)
+                          } else if (isSubmitEnter(event)) {
+                            event.currentTarget.dataset.done = "1"
+                            finishRename(session.id, event.currentTarget.value)
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <SidebarMenuButton
+                          isActive={session.id === activeId}
+                          disabled={disabled}
+                          onClick={() => onSelect(session.id)}
+                        >
+                          {session.id === streamingId && (
+                            <LoaderCircleIcon
+                              className="animate-spin text-muted-foreground"
+                              aria-label="Generating a reply"
+                            />
+                          )}
+                          <span className="truncate">
+                            {session.title || "Untitled"}
+                          </span>
+                        </SidebarMenuButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <SidebarMenuAction
+                              showOnHover
+                              aria-label="Chat actions"
+                            >
+                              <MoreHorizontalIcon />
+                            </SidebarMenuAction>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem
+                              onSelect={() => setRenamingId(session.id)}
+                            >
+                              <PencilIcon />
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={disabled || session.id === streamingId}
+                              onSelect={() => setDeleting(session)}
+                            >
+                              <Trash2Icon />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          ))}
         </SidebarContent>
         <SidebarFooter className="p-1 border-t">
           <SidebarGroup className="p-0">
