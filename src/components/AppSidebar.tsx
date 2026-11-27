@@ -175,7 +175,7 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                               aria-label="Generating a reply"
                             />
                           )}
-                          <span className="truncate">
+                          <span className="truncate font-normal">
                             {session.title || "Untitled"}
                           </span>
                         </SidebarMenuButton>
