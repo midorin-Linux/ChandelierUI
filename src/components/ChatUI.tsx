@@ -208,12 +208,11 @@ function Conversation() {
 
 const components: Components<Row, ListContext> = {
   Header: () => <div className="h-4" />,
-  EmptyPlaceholder: EmptyConversation,
   Footer: ListFooter,
 }
 
-/** What a chat with no messages shows: the next step towards a first message. */
-function EmptyConversation() {
+/** What a chat with no messages shows above the centered composer: the next step towards a first message. */
+export function EmptyConversation() {
   const hasProvider = useSettingsStore((s) => s.presets.length > 0)
   const { selectedModel, modelsLoading } = useChatContext()
   const [Icon, title, description] = !hasProvider
@@ -234,7 +233,7 @@ function EmptyConversation() {
           "Chats are saved on this device. Enter sends, Shift+Enter adds a line.",
         ]
   return (
-    <Empty className={`${column} py-16`}>
+    <Empty className="p-0 pb-8">
       <EmptyHeader>
         <EmptyMedia variant="icon">
           <Icon />
