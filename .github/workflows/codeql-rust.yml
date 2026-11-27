@@ -2,12 +2,17 @@ name: "CodeQL (Rust)"
 
 # Split from codeql.yml so it can be path-filtered: the Rust analysis takes
 # 4-7 minutes and is the slowest check, so it only runs when Rust code or
-# Cargo inputs change. Only pull requests are path-filtered: every push to
-# master is analyzed so PRs always have a base analysis to compare against.
-# The weekly schedule still re-analyzes master with updated query packs.
+# Cargo inputs change. The weekly schedule still re-analyzes master with
+# updated query packs.
 on:
   push:
     branches: ["master"]
+    paths:
+      - "src-tauri/**/*.rs"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
+      - "src-tauri/migrations/**"
+      - ".github/workflows/codeql-rust.yml"
   pull_request:
     branches: ["master"]
     paths:
