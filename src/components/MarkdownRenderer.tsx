@@ -1,9 +1,12 @@
-import { memo } from "react"
+import { memo, useState } from "react"
+import { ImageIcon } from "lucide-react"
 import { Streamdown, type Components } from "streamdown"
 import { openUrl } from "@tauri-apps/plugin-opener"
 import "katex/dist/katex.min.css"
 import { normalizeMathDelimiters } from "../lib/normalizeMathDelimiters"
+import { Button } from "@/src/components/ui/button"
 import { code } from "@/src/lib/codeHighlighter"
+import { host } from "@/src/lib/url"
 import { rehypePlugins, remarkPlugins, urlTransform } from "@/src/lib/markdown"
 
 const plugins = { code }
@@ -49,17 +52,45 @@ const components: Components = {
     ) : (
       <span>{children}</span>
     ),
-  // Remote images would leak requests; show alt text instead.
-  img: ({ alt }) => (
-    <span role="img" aria-label={alt || "image"} data-slot="markdown-image">
-      [image{alt ? `: ${alt}` : ""}]
-    </span>
+  img: ({ src, alt }) => (
+    <MarkdownImage src={typeof src === "string" ? src : ""} alt={alt ?? ""} />
   ),
   table: ({ children }) => (
     <div className="markdown-table">
       <table>{children}</table>
     </div>
   ),
+}
+
+/**
+ * Remote images would leak requests, so one loads only when clicked, and only
+ * over HTTPS (the CSP allows no other image source).
+ */
+function MarkdownImage({ src, alt }: { src: string; alt: string }) {
+  const [shown, setShown] = useState(false)
+  const label = `[image${alt ? `: ${alt}` : ""}]`
+  if (shown)
+    return <img src={src} alt={alt} className="max-w-full rounded-md" />
+  if (!src.startsWith("https:"))
+    return (
+      <span role="img" aria-label={alt || "image"} data-slot="markdown-image">
+        {label}
+      </span>
+    )
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-auto max-w-full py-1 font-normal"
+      title={src}
+      onClick={() => setShown(true)}
+    >
+      <ImageIcon />
+      <span className="truncate">
+        {label} · Load from {host(src)}
+      </span>
+    </Button>
+  )
 }
 
 /** `streaming` repairs unfinished Markdown and re-renders only the last block; set it only on the reply being received. */

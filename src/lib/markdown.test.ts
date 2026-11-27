@@ -212,8 +212,8 @@ test("security", () => {
     assert(urlTransform("java\nscript:alert(1)") === "", "control-char scheme")
     const img = show("![cat](https://evil.test/p.png)")
     assert(
-      !img.includes("<img") && !img.includes("evil.test"),
-      "images not loaded"
+      !img.includes("<img") && img.includes("Load from evil.test"),
+      "images wait for a click"
     )
     assert(img.includes("cat"), "image alt shown")
     const unsafeMath = show(
