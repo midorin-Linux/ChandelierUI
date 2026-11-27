@@ -58,7 +58,6 @@ function Section({
 }
 
 export function GeneralSettings() {
-  const defaults = useSettingsStore((s) => s.defaults)
   const { theme, setTheme } = useTheme()
 
   return (
@@ -87,13 +86,22 @@ export function GeneralSettings() {
         </Field>
       </Section>
 
-      <Section title="Response">
+      <Section title="Advanced">
         <TimeoutField />
       </Section>
+    </div>
+  )
+}
 
+/** What a new chat starts with. */
+export function ChatDefaults() {
+  const defaults = useSettingsStore((s) => s.defaults)
+
+  return (
+    <div className="flex flex-col gap-8">
       <Section
         title="New chat"
-        description="What a new chat starts with. Changing these never affects existing chats."
+        description="What a new chat starts with. Changing these never affects existing chats, and each chat can change them from the model button."
       >
         <DefaultModel />
         <FieldSeparator />

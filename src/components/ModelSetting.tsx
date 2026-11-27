@@ -101,9 +101,9 @@ export function ModelSetting() {
                           <Button
                             variant="link"
                             className="h-auto p-0 font-normal"
-                            onClick={() => openSettings("general")}
+                            onClick={() => openSettings("defaults")}
                           >
-                            General settings
+                            Chat defaults
                           </Button>
                         </DialogClose>
                         .
