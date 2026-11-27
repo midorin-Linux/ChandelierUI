@@ -4,9 +4,12 @@ import {
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
   Trash2Icon,
 } from "lucide-react"
 import { AppMenu } from "@/src/components/AppMenu"
+import { SearchChats } from "@/src/components/SearchChats"
+import { Dialog } from "@/src/components/ui/dialog"
 import { toast } from "sonner"
 import {
   DropdownMenu,
@@ -23,7 +26,6 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -51,10 +53,10 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [renamingId, setRenamingId] = useState<string | null>(null)
   // Deleted but still undoable: hidden now, removed when the toast closes.
   const [hidden, setHidden] = useState<readonly string[]>([])
-  const [query, setQuery] = useState("")
+  const [searching, setSearching] = useState(false)
   const groups = groupSessions(
     sessions.filter((session) => !hidden.includes(session.id)),
-    query
+    ""
   )
 
   function remove(session: SessionSummary) {
@@ -112,27 +114,17 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                   <span>New chat</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Search chats"
+                  onClick={() => setSearching(true)}
+                >
+                  <SearchIcon />
+                  <span>Search chats</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          {sessions.length > 0 && (
-            <div className="px-2 group-data-[collapsible=icon]:hidden">
-              <SidebarInput
-                type="search"
-                aria-label="Search chats"
-                placeholder="Search chats"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") setQuery("")
-                }}
-              />
-            </div>
-          )}
-          {query.trim() && groups.length === 0 && (
-            <p className="px-4 py-2 text-sm text-muted-foreground group-data-[collapsible=icon]:hidden">
-              No chats match.
-            </p>
-          )}
           {groups.map((group) => (
             <SidebarGroup
               key={group.label}
@@ -235,6 +227,9 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
           </SidebarGroup>
         </SidebarFooter>
       </Sidebar>
+      <Dialog open={searching} onOpenChange={setSearching}>
+        {searching && <SearchChats onDone={() => setSearching(false)} />}
+      </Dialog>
     </>
   )
 }
