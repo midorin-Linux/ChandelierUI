@@ -63,11 +63,11 @@ import {
 } from "@/src/stores/chat"
 import { useSettingsStore } from "@/src/stores/settings"
 import { openSettings } from "@/src/stores/settingsDialog"
-import type { ChatMessage } from "@/src/types/chat"
+import type { StreamMessage } from "@/src/lib/completionStream"
 import type { MessageNode } from "@/src/types/session"
 
 /** A stored message, or the reply still streaming in (it has no id yet). */
-type Row = MessageNode | ChatMessage
+type Row = MessageNode | StreamMessage
 
 interface ListContext {
   select: (nodeId: string) => void

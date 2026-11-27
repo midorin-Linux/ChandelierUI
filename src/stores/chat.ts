@@ -276,8 +276,14 @@ async function requestCompletion(
     result = await chatCompletion(requestPayload, (delta) => {
       const now = performance.now()
       if (delta.reasoning && thinkingFrom === null) thinkingFrom = now
-      if (delta.content && thinkingTo === null) thinkingTo = now
-      dispatchStream({ type: "delta", attemptId: id, delta })
+      // Thinking ends with the first content: its time is shown right away.
+      let reasoningMs: number | undefined
+      if (delta.content && thinkingTo === null) {
+        thinkingTo = now
+        if (thinkingFrom !== null)
+          reasoningMs = Math.round(Math.max(now - thinkingFrom, 0))
+      }
+      dispatchStream({ type: "delta", attemptId: id, delta, reasoningMs })
     })
     if (result.error)
       fail(result.error, result.error_kind, result.metrics.http_status)

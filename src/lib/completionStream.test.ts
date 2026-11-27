@@ -88,3 +88,23 @@ test("reset drops a failed partial message", () => {
     "Reset must drop a failed partial message when switching sessions"
   )
 })
+
+test("the thinking time is kept once set", () => {
+  let state = completionStream(
+    { attemptId: 0, isPending: false, message: null },
+    { type: "start", attemptId: 1 }
+  )
+  const delta = (content: string, reasoning: string, reasoningMs?: number) =>
+    (state = completionStream(state, {
+      type: "delta",
+      attemptId: 1,
+      delta: { content, reasoning },
+      reasoningMs,
+    }))
+  delta("", "Hmm")
+  assert.equal(state.message?.reasoning_ms, undefined, "Still thinking")
+  delta("A", "", 1200)
+  delta("B", "")
+  assert.equal(state.message?.reasoning_ms, 1200)
+  assert.equal(state.message?.content, "AB")
+})
