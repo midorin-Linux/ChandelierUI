@@ -569,6 +569,11 @@ function AssistantMessage({
     setWasThinking(thinking)
     if (!thinking) setOpen(false)
   }
+  const reasoningBox = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const box = reasoningBox.current
+    if (thinking && box) box.scrollTop = box.scrollHeight
+  }, [thinking, message.reasoning])
   return (
     <article
       aria-label={
@@ -596,9 +601,20 @@ function AssistantMessage({
               </TraceLine>
             </TraceCollapsibleTrigger>
             <TraceCollapsibleContent>
-              <p className="whitespace-pre-wrap wrap-break-word">
-                {message.reasoning}
-              </p>
+              {/* While thinking, a short window that follows the newest text,
+                  so long reasoning never pushes the "Thinking…" line out of view. */}
+              <div
+                ref={reasoningBox}
+                className={
+                  thinking
+                    ? "max-h-48 overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_2rem)]"
+                    : undefined
+                }
+              >
+                <p className="whitespace-pre-wrap wrap-break-word">
+                  {message.reasoning}
+                </p>
+              </div>
             </TraceCollapsibleContent>
           </TraceCollapsible>
         </Trace>
