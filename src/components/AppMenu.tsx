@@ -1,4 +1,5 @@
 import type { ReactNode } from "react"
+import { SettingsIcon, SunMoonIcon } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,12 +30,16 @@ export function AppMenu({
       <DropdownMenuContent align="start" className="min-w-48">
         <DropdownMenuGroup>
           <DropdownMenuItem onSelect={onOpenSettings}>
+            <SettingsIcon />
             Settings
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger>Theme</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger>
+            <SunMoonIcon />
+            Theme
+          </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             <DropdownMenuRadioGroup
               value={theme}
