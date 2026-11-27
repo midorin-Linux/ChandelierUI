@@ -1,5 +1,6 @@
 import { useState } from "react"
 import {
+  LoaderCircleIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
@@ -117,6 +118,12 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                         disabled={disabled}
                         onClick={() => onSelect(session.id)}
                       >
+                        {session.id === streamingId && (
+                          <LoaderCircleIcon
+                            className="animate-spin text-muted-foreground"
+                            aria-label="Generating a reply"
+                          />
+                        )}
                         <span className="truncate">
                           {session.title || "Untitled"}
                         </span>
