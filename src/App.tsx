@@ -89,7 +89,7 @@ function Chat() {
                 className={cn(
                   "absolute left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent",
                   animate &&
-                    "transition-[bottom] duration-500 ease-in-out motion-reduce:transition-none",
+                    "transition-[bottom] duration-(--panel-duration) ease-(--panel-ease) motion-reduce:transition-none",
                   empty
                     ? "bottom-[calc(50%-var(--composer-height,0px)/2)]"
                     : "bottom-0"
