@@ -10,6 +10,7 @@ import {
 } from "react"
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso"
 import {
+  ArrowDownIcon,
   BrainIcon,
   Check,
   ChevronLeft,
@@ -80,6 +81,7 @@ function Conversation() {
   const stuck = useRef(true)
   const lastTop = useRef(0)
   const scrollTarget = useRef<string | null>(null)
+  const [atBottom, setAtBottom] = useState(true)
   const context = useMemo<ListContext>(
     () => ({
       select: (id) => {
@@ -111,56 +113,76 @@ function Conversation() {
     [messages, partialMessage]
   )
   return (
-    <Virtuoso
-      ref={list}
-      className="min-h-0 w-full flex-1 text-[0.9rem]"
-      // No live region: rows remount while scrolling and would be re-announced.
-      // The footer's status line announces progress.
-      role="region"
-      aria-label="Conversation"
-      data={rows}
-      context={context}
-      components={components}
-      computeItemKey={(_, row) => ("id" in row ? row.id : "stream")}
-      initialTopMostItemIndex={{ index: "LAST", align: "end" }}
-      scrollerRef={(element) => {
-        scroller.current = element instanceof HTMLElement ? element : null
-      }}
-      onScroll={(event) => {
-        const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
-        if (scrollHeight - scrollTop - clientHeight < 32) stuck.current = true
-        else if (scrollTop < lastTop.current) stuck.current = false
-        lastTop.current = scrollTop
-      }}
-      // Growth outside a delta: late highlighting, the finished reply's buttons.
-      totalListHeightChanged={stick}
-      // Rows render before they scroll in, so tall replies don't pop in.
-      increaseViewportBy={{ top: 800, bottom: 400 }}
-      // Jump to the user's own new message, even from above. Off otherwise: while
-      // on, Virtuoso also chases a growing last row and pulls back a user who scrolled up.
-      followOutput={
-        rows[rows.length - 1]?.role === "user" ? () => "auto" : false
-      }
-      itemContent={(_, row) =>
-        "id" in row ? (
-          <MessageRow
-            message={row}
-            allMessages={allMessages}
-            busy={busy}
-            canSend={canSend}
-            onSelect={context.select}
-          />
-        ) : (
-          <div className={`${column} pb-4`}>
-            <AssistantMessage
+    <>
+      <Virtuoso
+        ref={list}
+        className="min-h-0 w-full flex-1 text-[0.9rem]"
+        // No live region: rows remount while scrolling and would be re-announced.
+        // The footer's status line announces progress.
+        role="region"
+        aria-label="Conversation"
+        data={rows}
+        context={context}
+        components={components}
+        computeItemKey={(_, row) => ("id" in row ? row.id : "stream")}
+        initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+        scrollerRef={(element) => {
+          scroller.current = element instanceof HTMLElement ? element : null
+        }}
+        onScroll={(event) => {
+          const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
+          if (scrollHeight - scrollTop - clientHeight < 32) stuck.current = true
+          else if (scrollTop < lastTop.current) stuck.current = false
+          lastTop.current = scrollTop
+        }}
+        // Growth outside a delta: late highlighting, the finished reply's buttons.
+        totalListHeightChanged={stick}
+        atBottomStateChange={setAtBottom}
+        atBottomThreshold={32}
+        // Rows render before they scroll in, so tall replies don't pop in.
+        increaseViewportBy={{ top: 800, bottom: 400 }}
+        // Jump to the user's own new message, even from above. Off otherwise: while
+        // on, Virtuoso also chases a growing last row and pulls back a user who scrolled up.
+        followOutput={
+          rows[rows.length - 1]?.role === "user" ? () => "auto" : false
+        }
+        itemContent={(_, row) =>
+          "id" in row ? (
+            <MessageRow
               message={row}
-              isPending={isPending}
-              failed={error !== null}
+              allMessages={allMessages}
+              busy={busy}
+              canSend={canSend}
+              onSelect={context.select}
             />
-          </div>
-        )
-      }
-    />
+          ) : (
+            <div className={`${column} pb-4`}>
+              <AssistantMessage
+                message={row}
+                isPending={isPending}
+                failed={error !== null}
+              />
+            </div>
+          )
+        }
+      />
+      {!atBottom && (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Scroll to latest"
+          className="absolute bottom-[calc(var(--composer-height,0px)+0.5rem)] left-1/2 z-10 -translate-x-1/2 rounded-full shadow-md"
+          onClick={() => {
+            stuck.current = true
+            // The scroller, not the last row: the footer below it holds status and errors.
+            const element = scroller.current
+            element?.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
+          }}
+        >
+          <ArrowDownIcon />
+        </Button>
+      )}
+    </>
   )
 }
 
