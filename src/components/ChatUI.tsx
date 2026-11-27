@@ -689,7 +689,7 @@ function AssistantMessage({
                 ref={reasoningBox}
                 className={
                   thinking
-                    ? "max-h-[max(12rem,calc(var(--list-height,100dvh)-var(--composer-height,0px)-var(--anchor-height,0px)-7rem))] overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_2rem)]"
+                    ? "max-h-[max(12rem,calc(var(--list-height,100dvh)-var(--composer-height,0px)-var(--anchor-height,0px)-7rem))] overflow-y-auto"
                     : undefined
                 }
               >
