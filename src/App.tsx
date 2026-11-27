@@ -2,59 +2,79 @@ import "./App.css"
 import { useEffect, useState } from "react"
 import { Analysis } from "@/src/components/Analysis"
 import { TitleBar } from "@/src/components/TitleBar"
-import { ChatUI } from "@/src/components/ChatUI"
+import { ChatUI, EmptyConversation } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
-import { AppSetting, type SettingsTab } from "@/src/components/AppSetting"
+import { AppSetting } from "@/src/components/AppSetting"
 import { Dialog } from "@/src/components/ui/dialog"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
+import { Toaster } from "@/src/components/ui/sonner"
+import { TooltipProvider } from "@/src/components/ui/tooltip"
 import { AppSidebar } from "@/src/components/AppSidebar"
 import { settingsWriter } from "@/src/lib/api"
-import { init, useChatContext } from "@/src/stores/chat"
+import {
+  init,
+  useChatContext,
+  useMessages,
+  useSession,
+} from "@/src/stores/chat"
+import { cn } from "@/src/lib/utils"
 import { loadMissingModels } from "@/src/stores/models"
 import { useSettingsStore } from "@/src/stores/settings"
+import { openSettings, useSettingsDialog } from "@/src/stores/settingsDialog"
 
 function App() {
   const loaded = useSettingsStore((s) => s.loaded)
   useEffect(() => void init(), [])
   // The theme stays outside the settings gate so it applies without waiting for IPC.
   return (
-    <ThemeProvider defaultTheme="system">{loaded && <Chat />}</ThemeProvider>
+    <ThemeProvider defaultTheme="system">
+      <TooltipProvider>
+        {loaded && <Chat />}
+        <Toaster />
+      </TooltipProvider>
+    </ThemeProvider>
   )
 }
 
 function Chat() {
-  const [appSettingsOpen, setAppSettingsOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
+  const { open: appSettingsOpen, tab: settingsTab } = useSettingsDialog()
   const { providerMissing } = useChatContext()
+  // A chat with no messages yet centers the composer; the first send moves it down.
+  const restoring = useSession((s) => s.restoring)
+  const messageCount = useMessages().length
+  const empty = !restoring && messageCount === 0
+  // Animate only moves the user causes, not the first placement after startup.
+  const [animate, setAnimate] = useState(false)
+  useEffect(() => {
+    if (restoring) return
+    // Two frames: the composer's height is measured in the first.
+    let id = requestAnimationFrame(() => {
+      id = requestAnimationFrame(() => setAnimate(true))
+    })
+    return () => cancelAnimationFrame(id)
+  }, [restoring])
   const presets = useSettingsStore((s) => s.presets)
   // Every provider's models are listed, so each is fetched once its URL is set or changed.
   useEffect(() => loadMissingModels(presets), [presets])
 
-  function openProviderSettings() {
-    setSettingsTab("provider")
-    setAppSettingsOpen(true)
-  }
-
   return (
     <>
       <SidebarProvider>
-        <AppSidebar
-          onOpenSettings={() => {
-            // The menu opens settings at the start; shortcuts like the model
-            // dialog's "Manage providers" open a specific tab instead.
-            setSettingsTab("general")
-            setAppSettingsOpen(true)
-          }}
-        />
+        {/* The menu opens settings at the start; shortcuts like the model
+            dialog's "Manage providers" open a specific tab instead. */}
+        <AppSidebar onOpenSettings={() => openSettings()} />
         <Dialog
           open={appSettingsOpen}
           onOpenChange={(open) => {
-            setAppSettingsOpen(open)
+            useSettingsDialog.setState({ open })
             if (!open) void settingsWriter.flush()
           }}
         >
-          <AppSetting tab={settingsTab} onTabChange={setSettingsTab} />
+          <AppSetting
+            tab={settingsTab}
+            onTabChange={(tab) => useSettingsDialog.setState({ tab })}
+          />
         </Dialog>
         <div className="flex h-screen min-w-0 flex-1 justify-center">
           <div className="flex min-h-0 w-full flex-col">
@@ -64,7 +84,16 @@ function Chat() {
             <div className="relative flex min-h-0 w-full flex-1 flex-col">
               <ChatUI />
               <div
-                className="absolute bottom-0 left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent"
+                // Positioned by `bottom` in both states so the move can be animated
+                // (top/bottom cannot). Centered: half the free height below it.
+                className={cn(
+                  "absolute left-1/2 w-full max-w-3xl -translate-x-1/2 border-x border-transparent",
+                  animate &&
+                    "transition-[bottom] duration-(--panel-duration) ease-(--panel-ease) motion-reduce:transition-none",
+                  empty
+                    ? "bottom-[calc(50%-var(--composer-height,0px)/2)]"
+                    : "bottom-0"
+                )}
                 ref={(node) => {
                   if (!node) return
                   const observer = new ResizeObserver(() => {
@@ -77,6 +106,7 @@ function Chat() {
                   return () => observer.disconnect()
                 }}
               >
+                {empty && <EmptyConversation />}
                 {providerMissing && (
                   <p
                     role="status"
@@ -86,7 +116,7 @@ function Chat() {
                     default provider instead.
                   </p>
                 )}
-                <MessageBox onOpenProviderSettings={openProviderSettings} />
+                <MessageBox />
               </div>
             </div>
           </div>

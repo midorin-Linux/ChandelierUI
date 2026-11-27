@@ -170,6 +170,8 @@ export type MessageNode_Deserialize = {
 	role: NodeRole,
 	content: string,
 	reasoning?: string,
+	/**  How long the model was thinking, from its first reasoning to its first content. */
+	reasoning_ms?: number | null,
 	created_at: number,
 };
 
@@ -180,6 +182,8 @@ export type MessageNode_Serialize = {
 	role: NodeRole,
 	content: string,
 	reasoning?: string,
+	/**  How long the model was thinking, from its first reasoning to its first content. */
+	reasoning_ms?: number,
 	created_at: number,
 };
 

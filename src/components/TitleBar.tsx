@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { desktop } from "@/src/lib/api"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { cn } from "@/src/lib/utils"
+import { useSession } from "@/src/stores/chat"
 
 // Segoe Fluent Icons caption glyphs, as used by the native Windows 11 title bar.
 const GLYPH = {
@@ -43,6 +44,12 @@ function CaptionButton({
 // Height matches the sidebar header (`h-10` in AppSidebar.tsx).
 export function TitleBar({ children }: { children?: ReactNode }) {
   const [maximized, setMaximized] = useState(false)
+  const title = useSession((s) =>
+    s.activeId === null
+      ? "New chat"
+      : s.sessions.find((session) => session.id === s.activeId)?.title ||
+        "Untitled"
+  )
 
   useEffect(() => {
     if (!desktop) return
@@ -56,8 +63,15 @@ export function TitleBar({ children }: { children?: ReactNode }) {
   return (
     <header
       data-tauri-drag-region
-      className="flex h-10 shrink-0 items-center justify-end border-b bg-background select-none"
+      className="flex h-10 shrink-0 items-center justify-between gap-4 border-b bg-background select-none"
     >
+      {/* Drag regions only apply to the element itself, so the title gets one too. */}
+      <h1
+        data-tauri-drag-region
+        className="min-w-0 truncate pl-4 text-sm font-medium"
+      >
+        {title}
+      </h1>
       <div className="flex h-full items-center">
         <div className="mr-2 flex items-center">{children}</div>
         {desktop && (

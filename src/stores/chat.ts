@@ -33,6 +33,7 @@ import {
   useSettingsStore,
 } from "@/src/stores/settings"
 import type { MeasuredCompletion } from "@/src/types/analysis"
+import type { ErrorKind } from "@/src/types/error"
 import type {
   ProviderChatRequest,
   ProviderPreset,
@@ -47,6 +48,8 @@ interface ChatState {
   error: string | null
   /** The session a request error belongs to; null for errors shown anywhere. */
   errorSessionId: string | null
+  /** Why a request failed, for a specific hint; null for other errors. */
+  errorCause: { kind: ErrorKind | null; status: number | null } | null
   /** A send is running, from the first save to the stored attempt. One at a time. */
   sending: boolean
   /** A session is being opened, started or deleted. */
@@ -59,12 +62,13 @@ export const useChatStore = create<ChatState>(() => ({
   streamSessionId: null,
   error: null,
   errorSessionId: null,
+  errorCause: null,
   sending: false,
   switching: false,
 }))
 
 const setError = (error: string | null, errorSessionId: string | null = null) =>
-  useChatStore.setState({ error, errorSessionId })
+  useChatStore.setState({ error, errorSessionId, errorCause: null })
 const dispatchStream = (event: Parameters<typeof completionStream>[1]) =>
   useChatStore.setState((s) => ({ stream: completionStream(s.stream, event) }))
 
@@ -188,6 +192,14 @@ export function useError() {
   )
 }
 
+/** Why the shown request error happened, if it came from a request. */
+export function useErrorCause() {
+  const activeId = useSession((s) => s.activeId)
+  return useChatStore((s) =>
+    s.errorSessionId === activeId ? s.errorCause : null
+  )
+}
+
 /** The stream, if it belongs to the session on screen. */
 export function useActiveStream() {
   const activeId = useSession((s) => s.activeId)
@@ -236,7 +248,16 @@ async function requestCompletion(
 ) {
   setError(null)
   // Shown only in its own session (a switch may still be loading); the attempt log keeps it too.
-  const fail = (message: string) => setError(message, sessionId)
+  const fail = (
+    message: string,
+    kind: ErrorKind | null,
+    status: number | null = null
+  ) =>
+    useChatStore.setState({
+      error: message,
+      errorSessionId: sessionId,
+      errorCause: { kind, status },
+    })
   const requestPayload = buildPayload(history, context, settings)
   const startedAt = new Date().toISOString()
   const started = performance.now()
@@ -248,11 +269,24 @@ async function requestCompletion(
       ?.context_length ?? null
   let result: MeasuredCompletion
   let reply: MessageNode | null = null
+  // Thinking time: first reasoning delta to first content delta (or the end).
+  let thinkingFrom: number | null = null
+  let thinkingTo: number | null = null
   try {
-    result = await chatCompletion(requestPayload, (delta) =>
-      dispatchStream({ type: "delta", attemptId: id, delta })
-    )
-    if (result.error) fail(result.error)
+    result = await chatCompletion(requestPayload, (delta) => {
+      const now = performance.now()
+      if (delta.reasoning && thinkingFrom === null) thinkingFrom = now
+      // Thinking ends with the first content: its time is shown right away.
+      let reasoningMs: number | undefined
+      if (delta.content && thinkingTo === null) {
+        thinkingTo = now
+        if (thinkingFrom !== null)
+          reasoningMs = Math.round(Math.max(now - thinkingFrom, 0))
+      }
+      dispatchStream({ type: "delta", attemptId: id, delta, reasoningMs })
+    })
+    if (result.error)
+      fail(result.error, result.error_kind, result.metrics.http_status)
     else if (result.message) {
       reply = {
         id: crypto.randomUUID(),
@@ -260,12 +294,17 @@ async function requestCompletion(
         role: "assistant",
         content: result.message.content,
         reasoning: result.message.reasoning,
+        ...(thinkingFrom !== null && {
+          reasoning_ms: Math.round(
+            Math.max((thinkingTo ?? performance.now()) - thinkingFrom, 0)
+          ),
+        }),
         created_at: Date.now(),
       }
     }
   } catch (cause) {
     const message = errorMessage(cause)
-    fail(message)
+    fail(message, cause instanceof ApiError ? cause.kind : null)
     result = {
       message: null,
       error: message,

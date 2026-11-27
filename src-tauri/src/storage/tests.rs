@@ -68,6 +68,7 @@ fn node(id: &str, parent: Option<&str>, role: NodeRole, text: &str) -> MessageNo
         role,
         content: text.into(),
         reasoning: String::new(),
+        reasoning_ms: None,
         created_at: 1,
     }
 }

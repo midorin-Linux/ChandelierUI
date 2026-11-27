@@ -1,5 +1,6 @@
 import {
   Field,
+  FieldDescription,
   FieldGroup,
   FieldLabel,
   FieldLegend,
@@ -17,6 +18,7 @@ import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { EffortPicker } from "@/src/components/EffortPicker"
 import { Textarea } from "@/src/components/ui/textarea"
 import { useSettingsStore } from "@/src/stores/settings"
+import { openSettings } from "@/src/stores/settingsDialog"
 import {
   selectModel,
   setEffort,
@@ -25,11 +27,7 @@ import {
   useSession,
 } from "@/src/stores/chat"
 
-export function ModelSetting({
-  onOpenProviderSettings,
-}: {
-  onOpenProviderSettings: () => void
-}) {
+export function ModelSetting() {
   const {
     providerId,
     providerName,
@@ -69,7 +67,7 @@ export function ModelSetting({
             <Button
               variant={presets.length === 0 ? "default" : "outline"}
               size="sm"
-              onClick={onOpenProviderSettings}
+              onClick={() => openSettings("provider")}
             >
               <SettingsIcon />
               Manage providers
@@ -77,10 +75,9 @@ export function ModelSetting({
           </DialogClose>
         </section>
         <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="px-4 pt-2"></div>
           <div className="flex min-h-0 flex-1 flex-col justify-between">
             <ScrollArea className="min-h-0 flex-1">
-              <Field className="pl-4">
+              <Field className="pt-2 pl-4">
                 <FieldSet>
                   <FieldLegend className="flex flex-col gap-0.5">
                     <span className="truncate">
@@ -95,10 +92,25 @@ export function ModelSetting({
                   <FieldGroup>
                     <Field>
                       <FieldLabel htmlFor="system-prompt">
-                        System prompt
+                        System prompt for this chat
                       </FieldLabel>
+                      <FieldDescription id="system-prompt-hint">
+                        Applies to this chat only. New chats start with the
+                        default from{" "}
+                        <DialogClose asChild>
+                          <Button
+                            variant="link"
+                            className="h-auto p-0 font-normal"
+                            onClick={() => openSettings("defaults")}
+                          >
+                            Chat defaults
+                          </Button>
+                        </DialogClose>
+                        .
+                      </FieldDescription>
                       <Textarea
                         id="system-prompt"
+                        aria-describedby="system-prompt-hint"
                         placeholder="You are a helpful assistant."
                         value={systemPrompt}
                         onChange={(event) =>

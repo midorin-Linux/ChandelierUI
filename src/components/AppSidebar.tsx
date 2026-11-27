@@ -1,24 +1,21 @@
 import { useState } from "react"
 import {
+  LoaderCircleIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
   Trash2Icon,
 } from "lucide-react"
 import { AppMenu } from "@/src/components/AppMenu"
-import { Button } from "@/src/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/src/components/ui/dialog"
+import { SearchChats } from "@/src/components/SearchChats"
+import { Dialog } from "@/src/components/ui/dialog"
+import { toast } from "sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu"
 import { Input } from "@/src/components/ui/input"
@@ -27,6 +24,7 @@ import {
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
@@ -34,6 +32,7 @@ import {
   SidebarMenuItem,
   SidebarTrigger,
 } from "@/src/components/ui/sidebar"
+import { groupSessions } from "@/src/lib/sessionGroups"
 import { isSubmitEnter } from "@/src/lib/utils"
 import {
   deleteSession as onDelete,
@@ -52,7 +51,39 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const disabled = !useCanSwitch()
   const streamingId = useStreamingSessionId()
   const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<SessionSummary | null>(null)
+  // Deleted but still undoable: hidden now, removed when the toast closes.
+  const [hidden, setHidden] = useState<readonly string[]>([])
+  const [searching, setSearching] = useState(false)
+  const groups = groupSessions(
+    sessions.filter((session) => !hidden.includes(session.id)),
+    ""
+  )
+
+  function remove(session: SessionSummary) {
+    if (session.id === activeId) onNew()
+    setHidden((ids) => [...ids, session.id])
+    let undone = false
+    let settled = false
+    // Sonner may report one close more than once (action, dismiss, timeout).
+    const settle = () => {
+      if (settled) return
+      settled = true
+      if (!undone) onDelete(session.id)
+      setHidden((ids) => ids.filter((id) => id !== session.id))
+    }
+    toast(`Deleted “${session.title || "Untitled"}”`, {
+      description: "Its analysis data is deleted too.",
+      action: {
+        label: "Undo",
+        onClick: () => {
+          undone = true
+          settle()
+        },
+      },
+      onDismiss: settle,
+      onAutoClose: settle,
+    })
+  }
 
   function finishRename(id: string, title: string) {
     setRenamingId(null)
@@ -83,75 +114,104 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                   <span>New chat</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="Search chats"
+                  onClick={() => setSearching(true)}
+                >
+                  <SearchIcon />
+                  <span>Search chats</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroup>
-          <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-            <SidebarMenu>
-              {sessions.map((session) => (
-                <SidebarMenuItem key={session.id}>
-                  {renamingId === session.id ? (
-                    <Input
-                      ref={(node) => node?.focus()}
-                      aria-label="Chat title"
-                      defaultValue={session.title}
-                      onBlur={(event) => {
-                        // Enter/Escape already finished; unmounting may blur again.
-                        if (!event.target.dataset.done) {
-                          finishRename(session.id, event.target.value)
-                        }
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          event.currentTarget.dataset.done = "1"
-                          setRenamingId(null)
-                        } else if (isSubmitEnter(event)) {
-                          event.currentTarget.dataset.done = "1"
-                          finishRename(session.id, event.currentTarget.value)
-                        }
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <SidebarMenuButton
-                        isActive={session.id === activeId}
-                        disabled={disabled}
-                        onClick={() => onSelect(session.id)}
-                      >
-                        <span className="truncate">
-                          {session.title || "Untitled"}
-                        </span>
-                      </SidebarMenuButton>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <SidebarMenuAction
-                            showOnHover
-                            aria-label="Chat actions"
-                          >
-                            <MoreHorizontalIcon />
-                          </SidebarMenuAction>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="start">
-                          <DropdownMenuItem
-                            onSelect={() => setRenamingId(session.id)}
-                          >
-                            <PencilIcon />
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={disabled || session.id === streamingId}
-                            onSelect={() => setDeleting(session)}
-                          >
-                            <Trash2Icon />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </>
-                  )}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
+          {groups.map((group) => (
+            <SidebarGroup
+              key={group.label}
+              className="group-data-[collapsible=icon]:hidden"
+            >
+              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+              <SidebarMenu>
+                {group.sessions.map((session) => (
+                  <SidebarMenuItem key={session.id}>
+                    {renamingId === session.id ? (
+                      <Input
+                        ref={(node) => node?.focus()}
+                        aria-label="Chat title"
+                        defaultValue={session.title}
+                        onBlur={(event) => {
+                          // Enter/Escape already finished; unmounting may blur again.
+                          if (!event.target.dataset.done) {
+                            finishRename(session.id, event.target.value)
+                          }
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Escape") {
+                            event.currentTarget.dataset.done = "1"
+                            setRenamingId(null)
+                          } else if (isSubmitEnter(event)) {
+                            event.currentTarget.dataset.done = "1"
+                            finishRename(session.id, event.currentTarget.value)
+                          }
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <SidebarMenuButton
+                          isActive={session.id === activeId}
+                          disabled={disabled}
+                          onClick={() => onSelect(session.id)}
+                          onDoubleClick={() => setRenamingId(session.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "F2") {
+                              event.preventDefault()
+                              setRenamingId(session.id)
+                            }
+                          }}
+                        >
+                          {session.id === streamingId && (
+                            <LoaderCircleIcon
+                              className="animate-spin text-muted-foreground"
+                              aria-label="Generating a reply"
+                            />
+                          )}
+                          <span className="truncate">
+                            {session.title || "Untitled"}
+                          </span>
+                        </SidebarMenuButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <SidebarMenuAction
+                              showOnHover
+                              aria-label="Chat actions"
+                            >
+                              <MoreHorizontalIcon />
+                            </SidebarMenuAction>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem
+                              onSelect={() => setRenamingId(session.id)}
+                            >
+                              <PencilIcon />
+                              Rename
+                              <DropdownMenuShortcut>F2</DropdownMenuShortcut>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={disabled || session.id === streamingId}
+                              onSelect={() => remove(session)}
+                            >
+                              <Trash2Icon />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          ))}
         </SidebarContent>
         <SidebarFooter className="p-1 border-t">
           <SidebarGroup className="p-0">
@@ -167,33 +227,8 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
           </SidebarGroup>
         </SidebarFooter>
       </Sidebar>
-      <Dialog
-        open={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete this chat?</DialogTitle>
-            <DialogDescription>
-              “{deleting?.title || "Untitled"}” and its analysis data will be
-              permanently deleted.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleting) onDelete(deleting.id)
-                setDeleting(null)
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
+      <Dialog open={searching} onOpenChange={setSearching}>
+        {searching && <SearchChats onDone={() => setSearching(false)} />}
       </Dialog>
     </>
   )

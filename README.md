@@ -32,12 +32,12 @@ It aims to be a lightweight, highly extensible application that can use a variet
 
 ## Tech Stack
 
-| Layer    | Technologies                                                                        |
-| -------- | ----------------------------------------------------------------------------------- |
-| App      | Tauri 2.0                                                                           |
-| Backend  | Rust, sqlx (SQLite), reqwest, keyring, tauri-specta (type-safe command bindings)    |
+| Layer    | Technologies                                                                           |
+| -------- | -------------------------------------------------------------------------------------- |
+| App      | Tauri 2.0                                                                              |
+| Backend  | Rust, sqlx (SQLite), reqwest, keyring, tauri-specta (type-safe command bindings)       |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, shadcn/ui, zustand, streamdown, shiki, KaTeX |
-| Tooling  | pnpm, just, ESLint, Prettier, rustfmt (nightly), Clippy, cargo-deny                 |
+| Tooling  | pnpm, just, ESLint, Prettier, rustfmt (nightly), Clippy, cargo-deny                    |
 
 ## Requirements
 
@@ -82,10 +82,10 @@ just dev run
 
 ### Where data is stored
 
-| Data                          | Location                                                              |
-| ----------------------------- | --------------------------------------------------------------------- |
-| Sessions, settings, analysis  | `chandelier.db` (SQLite) in the app data directory for `me.suwako.chandelier-ui` |
-| API keys                      | OS keyring (Windows Credential Manager / macOS Keychain / Secret Service) |
+| Data                         | Location                                                                         |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| Sessions, settings, analysis | `chandelier.db` (SQLite) in the app data directory for `me.suwako.chandelier-ui` |
+| API keys                     | OS keyring (Windows Credential Manager / macOS Keychain / Secret Service)        |
 
 The app data directory is typically:
 
@@ -99,29 +99,29 @@ Run `just` to list all commands.
 
 ### Run & build
 
-| Command          | Purpose                                                       |
-| ---------------- | ------------------------------------------------------------- |
-| `just install`   | Install frontend dependencies according to the lockfile       |
-| `just dev run`   | Launch the desktop app in development mode (starts Vite too)  |
-| `just build`     | Build the frontend, desktop app, and installers               |
-| `just web-dev`   | Start only the frontend dev server                            |
-| `just web-build` | Type-check and build the frontend                             |
-| `just preview`   | Preview the built frontend                                    |
+| Command          | Purpose                                                      |
+| ---------------- | ------------------------------------------------------------ |
+| `just install`   | Install frontend dependencies according to the lockfile      |
+| `just dev run`   | Launch the desktop app in development mode (starts Vite too) |
+| `just build`     | Build the frontend, desktop app, and installers              |
+| `just web-dev`   | Start only the frontend dev server                           |
+| `just web-build` | Type-check and build the frontend                            |
+| `just preview`   | Preview the built frontend                                   |
 
 ### Checks & tests
 
-| Command           | Purpose                                                              |
-| ----------------- | -------------------------------------------------------------------- |
-| `just check`      | Run all static checks (typecheck, lint, fmt-check, rust-check)       |
-| `just typecheck`  | Type-check the frontend without emitting files                       |
-| `just lint`       | Run ESLint on the whole repository                                   |
-| `just fmt`        | Format frontend files and Rust code                                  |
-| `just fmt-check`  | Check formatting without modifying files                             |
-| `just web-test`   | Run frontend tests                                                   |
-| `just rust-check` | `cargo check` all Rust crates                                        |
-| `just rust-test`  | Run Rust tests                                                       |
-| `just clippy`     | Run Clippy with warnings treated as errors                           |
-| `just deny`       | Check Rust dependencies (advisories, licenses, bans, sources)        |
+| Command           | Purpose                                                                |
+| ----------------- | ---------------------------------------------------------------------- |
+| `just check`      | Run all static checks (typecheck, lint, fmt-check, rust-check)         |
+| `just typecheck`  | Type-check the frontend without emitting files                         |
+| `just lint`       | Run ESLint on the whole repository                                     |
+| `just fmt`        | Format frontend files and Rust code                                    |
+| `just fmt-check`  | Check formatting without modifying files                               |
+| `just web-test`   | Run frontend tests                                                     |
+| `just rust-check` | `cargo check` all Rust crates                                          |
+| `just rust-test`  | Run Rust tests                                                         |
+| `just clippy`     | Run Clippy with warnings treated as errors                             |
+| `just deny`       | Check Rust dependencies (advisories, licenses, bans, sources)          |
 | `just bindings`   | Regenerate `src/bindings.ts` from Rust commands; fails if it was stale |
 
 Before opening a pull request, run `just check`, `just web-test`, `just rust-test` and `just clippy`.

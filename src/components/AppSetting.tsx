@@ -1,16 +1,41 @@
-import { ServerIcon, SettingsIcon } from "lucide-react"
+import { MessageSquareIcon, ServerIcon, SettingsIcon } from "lucide-react"
 import type { ComponentType } from "react"
 import { DialogContent, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
-import { GeneralSettings } from "@/src/components/setting/GeneralSettings"
+import {
+  ChatDefaults,
+  GeneralSettings,
+} from "@/src/components/setting/GeneralSettings"
 import { ProviderSettings } from "@/src/components/setting/ProviderSettings"
 import { SaveStatus } from "@/src/components/setting/SaveStatus"
 
-export type SettingsTab = "general" | "provider"
+import type { SettingsTab } from "@/src/stores/settingsDialog"
 
-const tabs: { id: SettingsTab; label: string; icon: ComponentType }[] = [
-  { id: "general", label: "General", icon: SettingsIcon },
-  { id: "provider", label: "Providers", icon: ServerIcon },
+// In setup order: a provider first, then what new chats start with.
+const tabs: {
+  id: SettingsTab
+  label: string
+  icon: ComponentType
+  content: ComponentType
+}[] = [
+  {
+    id: "provider",
+    label: "Providers",
+    icon: ServerIcon,
+    content: ProviderSettings,
+  },
+  {
+    id: "defaults",
+    label: "Chat defaults",
+    icon: MessageSquareIcon,
+    content: ChatDefaults,
+  },
+  {
+    id: "general",
+    label: "General",
+    icon: SettingsIcon,
+    content: GeneralSettings,
+  },
 ]
 
 export function AppSetting({
@@ -49,8 +74,7 @@ export function AppSetting({
         </nav>
         <section className="min-h-0 min-w-0 flex-1 overflow-y-auto py-4 md:p-4 md:pl-6">
           <h2 className="mb-4 text-lg font-semibold">{current.label}</h2>
-          {tab === "general" && <GeneralSettings />}
-          {tab === "provider" && <ProviderSettings />}
+          <current.content />
         </section>
       </div>
     </DialogContent>

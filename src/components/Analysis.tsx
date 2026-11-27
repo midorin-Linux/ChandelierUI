@@ -1,8 +1,15 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { ChartColumnIcon } from "lucide-react"
+import { ChartColumnIcon, InfoIcon } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Progress } from "@/src/components/ui/progress"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/components/ui/select"
 import {
   Sheet,
   SheetContent,
@@ -16,6 +23,11 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/src/components/ui/tabs"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/src/components/ui/tooltip"
 import {
   contextUtilization,
   formatMetric,
@@ -116,11 +128,33 @@ function ContextBar({ percent }: { percent: number | null }) {
   )
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({
+  label,
+  help,
+  value,
+}: {
+  label: string
+  help: string
+  value: string
+}) {
   const unavailable = value === "Unavailable"
   return (
     <div className="min-w-0 rounded-lg border p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        {label}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              className="rounded-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <InfoIcon className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">{help}</TooltipContent>
+        </Tooltip>
+      </div>
       <div
         className={`truncate text-2xl font-semibold tabular-nums ${unavailable ? "text-muted-foreground" : ""}`}
       >
@@ -128,6 +162,12 @@ function Kpi({ label, value }: { label: string; value: string }) {
       </div>
     </div>
   )
+}
+
+/** Local date and time; the raw value if it does not parse. */
+function formatTime(iso: string) {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
 }
 
 function Note({ children }: { children: ReactNode }) {
@@ -170,7 +210,10 @@ export function Analysis() {
             </p>
           )}
           {!selected || !metrics || !location ? (
-            <p className="text-sm text-muted-foreground">No measurements yet</p>
+            <p className="text-sm text-muted-foreground">
+              No measurements yet. Send a message to see latency, throughput and
+              usage for each attempt.
+            </p>
           ) : (
             <>
               <div className="space-y-2">
@@ -180,28 +223,27 @@ export function Analysis() {
                 >
                   Attempt history
                 </label>
-                <select
-                  id="analysis-attempt"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                <Select
                   value={selectedId === null ? "latest" : String(selected.id)}
-                  onChange={(event) =>
-                    setSelectedId(
-                      event.target.value === "latest"
-                        ? null
-                        : Number(event.target.value)
-                    )
+                  onValueChange={(value) =>
+                    setSelectedId(value === "latest" ? null : Number(value))
                   }
                 >
-                  <option value="latest">
-                    Latest completed attempt (#{latest.id})
-                  </option>
-                  {attempts.map((attempt) => (
-                    <option key={attempt.id} value={attempt.id}>
-                      #{attempt.id} · {attempt.started_at} ·{" "}
-                      {isFailed(attempt) ? "Failed" : "Succeeded"}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="analysis-attempt" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="latest">
+                      Latest completed attempt (#{latest.id})
+                    </SelectItem>
+                    {attempts.map((attempt) => (
+                      <SelectItem key={attempt.id} value={String(attempt.id)}>
+                        #{attempt.id} · {formatTime(attempt.started_at)} ·{" "}
+                        {isFailed(attempt) ? "Failed" : "Succeeded"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Note>
                   Showing the saved snapshot for attempt #{selected.id}. Editing
                   the current request does not change these measurements.
@@ -211,18 +253,22 @@ export function Analysis() {
                 <div className="grid grid-cols-2 gap-3">
                   <Kpi
                     label="TTFT"
+                    help="Time to first token: from sending the request until the first visible text or reasoning arrives."
                     value={formatMetric(metrics.ttft_ms, "ms")}
                   />
                   <Kpi
                     label="E2E Latency"
+                    help="End-to-end latency: from sending the request until the reply finished."
                     value={formatMetric(metrics.e2e_ms, "ms")}
                   />
                   <Kpi
                     label="Output TPS"
+                    help="Output tokens per second, counted from the first visible content to the end."
                     value={formatMetric(metrics.output_tps, "tps")}
                   />
                   <Kpi
                     label="Total tokens"
+                    help="Input plus output tokens, as reported by the provider."
                     value={formatMetric(metrics.total_tokens, "tokens", 0)}
                   />
                 </div>
@@ -238,238 +284,254 @@ export function Analysis() {
               </div>
             </>
           )}
-          <Tabs defaultValue="overview">
-            <TabsList className="w-full">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="latency">Latency</TabsTrigger>
-              <TabsTrigger value="throughput">Throughput</TabsTrigger>
-              <TabsTrigger value="usage">Usage</TabsTrigger>
-              <TabsTrigger value="reliability">Reliability</TabsTrigger>
-            </TabsList>
-            <TabsContent value="overview" className="space-y-6">
-              {selected && metrics && location && (
-                <>
-                  <MetricSection
-                    title="Request snapshot"
-                    rows={[
-                      ["Model", selected.request.model],
-                      ["Provider", location.provider],
-                      ["Base URL", selected.request.base_url],
-                      ["Location", location.classification],
-                      ["Endpoint path", location.endpoint],
-                      ["Started at", selected.started_at],
-                      ["Temperature", "Provider default (not sent)"],
-                      ["max_tokens", "Provider default (not sent)"],
-                      ["Streaming transport", "true (SSE; usage requested)"],
-                      ["Reasoning effort", selected.request.reasoning_effort],
-                      [
-                        "Input tokens (API usage)",
-                        formatMetric(metrics.input_tokens, "tokens", 0),
-                      ],
-                      [
-                        "Concurrency at start",
-                        formatMetric(selected.concurrency, "", 0),
-                      ],
-                    ]}
-                  />
-                  <MetricSection
-                    title="Attempt result"
-                    rows={[
-                      ["HTTP status", formatMetric(metrics.http_status, "", 0)],
-                      ["Finish reason", metrics.finish_reason ?? "Unavailable"],
-                      ["Error", selected.result.error ?? "None"],
-                      ["Timed out", metrics.timed_out ? "Yes" : "No"],
-                      ["Retry attempt", selected.retry ? "Yes" : "No"],
-                    ]}
-                  />
-                </>
-              )}
-            </TabsContent>
-            <TabsContent value="latency" className="space-y-6">
-              {selected && metrics && location && (
-                <>
-                  <LatencyWaterfall metrics={metrics} />
-                  <MetricSection
-                    title="Latency"
-                    rows={[
-                      [
-                        "Time to first visible content (TTFT)",
-                        formatMetric(metrics.ttft_ms, "ms"),
-                      ],
-                      [
-                        "Time to first body bytes (TTFB)",
-                        formatMetric(metrics.ttfb_ms, "ms"),
-                      ],
-                      ["E2E Latency", formatMetric(metrics.e2e_ms, "ms")],
-                      [
-                        "Observed decode window",
-                        formatMetric(metrics.decode_ms, "ms"),
-                      ],
-                      [
-                        "Server prefill",
-                        formatMetric(metrics.prefill_ms, "ms"),
-                      ],
-                      [
-                        "Server decode",
-                        formatMetric(metrics.server_decode_ms, "ms"),
-                      ],
-                      ["Connection", formatMetric(metrics.connection_ms, "ms")],
-                      ["DNS", formatMetric(metrics.dns_ms, "ms")],
-                      ["TCP", formatMetric(metrics.tcp_ms, "ms")],
-                      ["TLS", formatMetric(metrics.tls_ms, "ms")],
-                    ]}
-                  />
-                  <Note>
-                    Timings are backend monotonic measurements. Connection
-                    phases and server prefill/decode are unavailable when not
-                    exposed; TTFT is not a prefill measurement. Streaming is the
-                    transport; the chat reply is displayed after completion.
-                  </Note>
-                </>
-              )}
-            </TabsContent>
-            <TabsContent value="throughput" className="space-y-6">
-              {selected && metrics && location && (
-                <>
-                  <MetricSection
-                    title="Throughput and token timing"
-                    rows={[
-                      [
-                        "Output throughput",
-                        formatMetric(metrics.output_tps, "tokens/s"),
-                      ],
-                      [
-                        "Derived time per output token (TPOT)",
-                        formatMetric(metrics.tpot_ms, "ms/token"),
-                      ],
-                      [
-                        "True inter-token latency: mean",
-                        formatMetric(metrics.itl_mean_ms, "ms"),
-                      ],
-                      [
-                        "True inter-token latency: maximum",
-                        formatMetric(metrics.itl_max_ms, "ms"),
-                      ],
-                      [
-                        "True inter-token latency: standard deviation",
-                        formatMetric(metrics.itl_stddev_ms, "ms"),
-                      ],
-                    ]}
-                  />
-                  <Note>
-                    TPS uses API-reported output tokens (possibly including
-                    reasoning) over the observed window after first visible
-                    content. TPOT divides that window by output tokens minus
-                    one. Neither is an estimate from visible-text tokenization.
-                    SSE chunks may contain multiple tokens, so they do not
-                    establish true per-token events or ITL.
-                  </Note>
-                  <MetricSection
-                    title="Received content-chunk intervals (not token latency)"
-                    rows={[
-                      [
-                        "Mean interval",
-                        formatMetric(metrics.chunk_interval_mean_ms, "ms"),
-                      ],
-                      [
-                        "Maximum interval",
-                        formatMetric(metrics.chunk_interval_max_ms, "ms"),
-                      ],
-                      [
-                        "Interval standard deviation",
-                        formatMetric(metrics.chunk_interval_stddev_ms, "ms"),
-                      ],
-                    ]}
-                  />
-                </>
-              )}
-            </TabsContent>
-            <TabsContent value="usage" className="space-y-6">
-              {selected && metrics && location && (
-                <>
-                  <MetricSection
-                    title="Usage and context"
-                    rows={[
-                      [
-                        "Input tokens",
-                        formatMetric(metrics.input_tokens, "tokens", 0),
-                      ],
-                      [
-                        "Output tokens",
-                        formatMetric(metrics.output_tokens, "tokens", 0),
-                      ],
-                      [
-                        "Total tokens",
-                        formatMetric(metrics.total_tokens, "tokens", 0),
-                      ],
-                      [
-                        "Cached input tokens",
-                        formatMetric(metrics.cached_tokens, "tokens", 0),
-                      ],
-                      [
-                        "Reasoning tokens",
-                        formatMetric(metrics.reasoning_tokens, "tokens", 0),
-                      ],
-                      [
-                        "Known model context maximum",
-                        formatMetric(selected.context_length, "tokens", 0),
-                      ],
-                      [
-                        "Context utilization (input / known maximum)",
-                        formatMetric(
-                          contextUtilization(
-                            metrics.input_tokens,
-                            selected.context_length
+          {selected && metrics && location && (
+            <Tabs defaultValue="overview">
+              <TabsList className="w-full">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="latency">Latency</TabsTrigger>
+                <TabsTrigger value="throughput">Throughput</TabsTrigger>
+                <TabsTrigger value="usage">Usage</TabsTrigger>
+                <TabsTrigger value="reliability">Reliability</TabsTrigger>
+              </TabsList>
+              <TabsContent value="overview" className="space-y-6">
+                {selected && metrics && location && (
+                  <>
+                    <MetricSection
+                      title="Request snapshot"
+                      rows={[
+                        ["Model", selected.request.model],
+                        ["Provider", location.provider],
+                        ["Base URL", selected.request.base_url],
+                        ["Location", location.classification],
+                        ["Endpoint path", location.endpoint],
+                        ["Started at", formatTime(selected.started_at)],
+                        ["Temperature", "Provider default (not sent)"],
+                        ["max_tokens", "Provider default (not sent)"],
+                        ["Streaming transport", "true (SSE; usage requested)"],
+                        ["Reasoning effort", selected.request.reasoning_effort],
+                        [
+                          "Input tokens (API usage)",
+                          formatMetric(metrics.input_tokens, "tokens", 0),
+                        ],
+                        [
+                          "Concurrency at start",
+                          formatMetric(selected.concurrency, "", 0),
+                        ],
+                      ]}
+                    />
+                    <MetricSection
+                      title="Attempt result"
+                      rows={[
+                        [
+                          "HTTP status",
+                          formatMetric(metrics.http_status, "", 0),
+                        ],
+                        [
+                          "Finish reason",
+                          metrics.finish_reason ?? "Unavailable",
+                        ],
+                        ["Error", selected.result.error ?? "None"],
+                        ["Timed out", metrics.timed_out ? "Yes" : "No"],
+                        ["Retry attempt", selected.retry ? "Yes" : "No"],
+                      ]}
+                    />
+                  </>
+                )}
+              </TabsContent>
+              <TabsContent value="latency" className="space-y-6">
+                {selected && metrics && location && (
+                  <>
+                    <LatencyWaterfall metrics={metrics} />
+                    <MetricSection
+                      title="Latency"
+                      rows={[
+                        [
+                          "Time to first visible content (TTFT)",
+                          formatMetric(metrics.ttft_ms, "ms"),
+                        ],
+                        [
+                          "Time to first body bytes (TTFB)",
+                          formatMetric(metrics.ttfb_ms, "ms"),
+                        ],
+                        ["E2E Latency", formatMetric(metrics.e2e_ms, "ms")],
+                        [
+                          "Observed decode window",
+                          formatMetric(metrics.decode_ms, "ms"),
+                        ],
+                        [
+                          "Server prefill",
+                          formatMetric(metrics.prefill_ms, "ms"),
+                        ],
+                        [
+                          "Server decode",
+                          formatMetric(metrics.server_decode_ms, "ms"),
+                        ],
+                        [
+                          "Connection",
+                          formatMetric(metrics.connection_ms, "ms"),
+                        ],
+                        ["DNS", formatMetric(metrics.dns_ms, "ms")],
+                        ["TCP", formatMetric(metrics.tcp_ms, "ms")],
+                        ["TLS", formatMetric(metrics.tls_ms, "ms")],
+                      ]}
+                    />
+                    <Note>
+                      Timings are backend monotonic measurements. Connection
+                      phases and server prefill/decode are unavailable when not
+                      exposed; TTFT is not a prefill measurement. The reply is
+                      shown as it streams in.
+                    </Note>
+                  </>
+                )}
+              </TabsContent>
+              <TabsContent value="throughput" className="space-y-6">
+                {selected && metrics && location && (
+                  <>
+                    <MetricSection
+                      title="Throughput and token timing"
+                      rows={[
+                        [
+                          "Output throughput",
+                          formatMetric(metrics.output_tps, "tokens/s"),
+                        ],
+                        [
+                          "Derived time per output token (TPOT)",
+                          formatMetric(metrics.tpot_ms, "ms/token"),
+                        ],
+                        [
+                          "True inter-token latency: mean",
+                          formatMetric(metrics.itl_mean_ms, "ms"),
+                        ],
+                        [
+                          "True inter-token latency: maximum",
+                          formatMetric(metrics.itl_max_ms, "ms"),
+                        ],
+                        [
+                          "True inter-token latency: standard deviation",
+                          formatMetric(metrics.itl_stddev_ms, "ms"),
+                        ],
+                      ]}
+                    />
+                    <Note>
+                      TPS uses API-reported output tokens (possibly including
+                      reasoning) over the observed window after first visible
+                      content. TPOT divides that window by output tokens minus
+                      one. Neither is an estimate from visible-text
+                      tokenization. SSE chunks may contain multiple tokens, so
+                      they do not establish true per-token events or ITL.
+                    </Note>
+                    <MetricSection
+                      title="Received content-chunk intervals (not token latency)"
+                      rows={[
+                        [
+                          "Mean interval",
+                          formatMetric(metrics.chunk_interval_mean_ms, "ms"),
+                        ],
+                        [
+                          "Maximum interval",
+                          formatMetric(metrics.chunk_interval_max_ms, "ms"),
+                        ],
+                        [
+                          "Interval standard deviation",
+                          formatMetric(metrics.chunk_interval_stddev_ms, "ms"),
+                        ],
+                      ]}
+                    />
+                  </>
+                )}
+              </TabsContent>
+              <TabsContent value="usage" className="space-y-6">
+                {selected && metrics && location && (
+                  <>
+                    <MetricSection
+                      title="Usage and context"
+                      rows={[
+                        [
+                          "Input tokens",
+                          formatMetric(metrics.input_tokens, "tokens", 0),
+                        ],
+                        [
+                          "Output tokens",
+                          formatMetric(metrics.output_tokens, "tokens", 0),
+                        ],
+                        [
+                          "Total tokens",
+                          formatMetric(metrics.total_tokens, "tokens", 0),
+                        ],
+                        [
+                          "Cached input tokens",
+                          formatMetric(metrics.cached_tokens, "tokens", 0),
+                        ],
+                        [
+                          "Reasoning tokens",
+                          formatMetric(metrics.reasoning_tokens, "tokens", 0),
+                        ],
+                        [
+                          "Known model context maximum",
+                          formatMetric(selected.context_length, "tokens", 0),
+                        ],
+                        [
+                          "Context utilization (input / known maximum)",
+                          formatMetric(
+                            contextUtilization(
+                              metrics.input_tokens,
+                              selected.context_length
+                            ),
+                            "%"
                           ),
-                          "%"
-                        ),
-                      ],
-                    ]}
-                  />
-                  <ContextBar
-                    percent={contextUtilization(
-                      metrics.input_tokens,
-                      selected.context_length
-                    )}
-                  />
-                  <Note>
-                    Usage is API-reported, not locally estimated. Missing values
-                    are unavailable, not zero. Context utilization requires a
-                    known model maximum.
-                  </Note>
-                </>
-              )}
-            </TabsContent>
-            <TabsContent value="reliability" className="space-y-6">
-              <MetricSection
-                title="Reliability — all completed attempts this session"
-                rows={[
-                  ["Attempt count", formatMetric(summary.count, "", 0)],
-                  ["Errors", formatMetric(summary.errors, "", 0)],
-                  ["Error rate", formatMetric(summary.errorRate, "%")],
-                  ["Timeouts", formatMetric(summary.timeouts, "", 0)],
-                  ["Timeout rate", formatMetric(summary.timeoutRate, "%")],
-                  ["Retry count", formatMetric(summary.retries, "", 0)],
-                  ["HTTP 429 count", formatMetric(summary.rateLimited, "", 0)],
-                  ["HTTP 5xx count", formatMetric(summary.serverErrors, "", 0)],
-                ]}
-              />
-              <Note>
-                Rates use all completed attempts, including failures. Retry
-                counts reflect explicit retry attempts; no automatic retries or
-                fallback are performed.
-              </Note>
-              <details className="border-t py-2">
-                <summary className="cursor-pointer text-sm">
-                  Request JSON (current editor preview only — not the saved
-                  attempt)
-                </summary>
-                <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs">
-                  {JSON.stringify(payload, null, 2)}
-                </pre>
-              </details>
-            </TabsContent>
-          </Tabs>
+                        ],
+                      ]}
+                    />
+                    <ContextBar
+                      percent={contextUtilization(
+                        metrics.input_tokens,
+                        selected.context_length
+                      )}
+                    />
+                    <Note>
+                      Usage is API-reported, not locally estimated. Missing
+                      values are unavailable, not zero. Context utilization
+                      requires a known model maximum.
+                    </Note>
+                  </>
+                )}
+              </TabsContent>
+              <TabsContent value="reliability" className="space-y-6">
+                <MetricSection
+                  title="Reliability — all completed attempts this session"
+                  rows={[
+                    ["Attempt count", formatMetric(summary.count, "", 0)],
+                    ["Errors", formatMetric(summary.errors, "", 0)],
+                    ["Error rate", formatMetric(summary.errorRate, "%")],
+                    ["Timeouts", formatMetric(summary.timeouts, "", 0)],
+                    ["Timeout rate", formatMetric(summary.timeoutRate, "%")],
+                    ["Retry count", formatMetric(summary.retries, "", 0)],
+                    [
+                      "HTTP 429 count",
+                      formatMetric(summary.rateLimited, "", 0),
+                    ],
+                    [
+                      "HTTP 5xx count",
+                      formatMetric(summary.serverErrors, "", 0),
+                    ],
+                  ]}
+                />
+                <Note>
+                  Rates use all completed attempts, including failures. Retry
+                  counts reflect explicit retry attempts; no automatic retries
+                  or fallback are performed.
+                </Note>
+              </TabsContent>
+            </Tabs>
+          )}
+          <details className="border-t py-2">
+            <summary className="cursor-pointer text-sm">
+              Request JSON (current editor preview only — not the saved attempt)
+            </summary>
+            <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-muted p-3 text-xs">
+              {JSON.stringify(payload, null, 2)}
+            </pre>
+          </details>
         </div>
       </SheetContent>
     </Sheet>

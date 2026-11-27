@@ -16,12 +16,12 @@
         "decorations": false,
         "width": 1280,
         "height": 800,
-        "minWidth": 760,
+        "minWidth": 800,
         "minHeight": 560
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; font-src 'self'"
     }
   },
   "bundle": {

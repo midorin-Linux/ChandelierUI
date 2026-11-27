@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { RotateCcwIcon } from "lucide-react"
+import { ChevronsUpDownIcon, RotateCcwIcon } from "lucide-react"
 import { EffortPicker } from "@/src/components/EffortPicker"
 import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { useTheme } from "@/src/components/ThemeProvider"
@@ -20,6 +20,11 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/src/components/ui/input-group"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/src/components/ui/popover"
 import { Tabs, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
 import { Textarea } from "@/src/components/ui/textarea"
 import { providerModelsView } from "@/src/lib/models"
@@ -58,7 +63,6 @@ function Section({
 }
 
 export function GeneralSettings() {
-  const defaults = useSettingsStore((s) => s.defaults)
   const { theme, setTheme } = useTheme()
 
   return (
@@ -87,13 +91,22 @@ export function GeneralSettings() {
         </Field>
       </Section>
 
-      <Section title="Response">
+      <Section title="Advanced">
         <TimeoutField />
       </Section>
+    </div>
+  )
+}
 
+/** What a new chat starts with. */
+export function ChatDefaults() {
+  const defaults = useSettingsStore((s) => s.defaults)
+
+  return (
+    <div className="flex flex-col gap-8">
       <Section
         title="New chat"
-        description="What a new chat starts with. Changing these never affects existing chats."
+        description="What a new chat starts with. Changing these never affects existing chats, and each chat can change them from the model button."
       >
         <DefaultModel />
         <FieldSeparator />
@@ -196,7 +209,7 @@ function DefaultModel() {
   const defaults = useSettingsStore((s) => s.defaults)
   const presets = useSettingsStore((s) => s.presets)
   const lists = useModelsStore()
-  const [picking, setPicking] = useState(false)
+  const [open, setOpen] = useState(false)
   const preset = defaults.model
     ? presets.find((p) => p.id === defaults.providerId)
     : undefined
@@ -208,70 +221,63 @@ function DefaultModel() {
     !view.models.some((model) => model.id === defaults.model)
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <div id="default-model-label" className="text-sm">
-            Model
-          </div>
-          <p className="text-sm text-muted-foreground">
-            When unset, a new chat keeps the current chat&apos;s model.
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {defaults.model && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDefaults({ model: "" })}
-            >
-              Unset
-            </Button>
-          )}
+    <Field orientation="horizontal">
+      <FieldContent>
+        <FieldTitle id="default-model-label">Model</FieldTitle>
+        <FieldDescription>
+          {missing
+            ? "Not in this provider's current model list."
+            : "When unset, a new chat keeps the current chat's model."}
+        </FieldDescription>
+      </FieldContent>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
           <Button
             variant="outline"
-            size="sm"
-            aria-expanded={picking}
-            onClick={() => setPicking(!picking)}
+            aria-labelledby="default-model-label default-model-value"
+            className="h-auto max-w-72 min-w-48 justify-between py-1.5 text-left"
           >
-            {picking ? "Done" : "Change"}
-          </Button>
-        </div>
-      </div>
-      <div
-        aria-labelledby="default-model-label"
-        className="flex min-w-0 flex-col rounded-md border px-3 py-2 text-sm"
-      >
-        {defaults.model ? (
-          <>
-            <span className="truncate">{defaults.model}</span>
-            <span className="text-xs text-muted-foreground">
-              {preset ? presetLabel(preset) : "Unknown provider"}
-              {missing && " · not in this provider's current model list"}
+            <span id="default-model-value" className="flex min-w-0 flex-col">
+              <span className="truncate">
+                {defaults.model || "Current chat's model"}
+              </span>
+              {defaults.model && (
+                <span className="truncate text-xs font-normal text-muted-foreground">
+                  {preset ? presetLabel(preset) : "Unknown provider"}
+                </span>
+              )}
             </span>
-          </>
-        ) : (
-          <span className="text-muted-foreground">
+            <ChevronsUpDownIcon className="text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="flex w-96 flex-col gap-1 p-2">
+          <Button
+            variant={defaults.model ? "ghost" : "secondary"}
+            size="sm"
+            className="justify-start"
+            onClick={() => {
+              setDefaults({ model: "" })
+              setOpen(false)
+            }}
+          >
             Keep the current chat&apos;s model
-          </span>
-        )}
-      </div>
-      {picking && (
-        <ModelBrowser
-          className="max-h-80 rounded-md border p-2"
-          presets={presets}
-          selected={
-            defaults.model
-              ? { providerId: defaults.providerId, model: defaults.model }
-              : null
-          }
-          onSelect={(providerId, model) => {
-            setDefaults({ providerId, model })
-            setPicking(false)
-          }}
-          focusSearch
-        />
-      )}
-    </div>
+          </Button>
+          <ModelBrowser
+            className="max-h-80"
+            presets={presets}
+            selected={
+              defaults.model
+                ? { providerId: defaults.providerId, model: defaults.model }
+                : null
+            }
+            onSelect={(providerId, model) => {
+              setDefaults({ providerId, model })
+              setOpen(false)
+            }}
+            focusSearch
+          />
+        </PopoverContent>
+      </Popover>
+    </Field>
   )
 }

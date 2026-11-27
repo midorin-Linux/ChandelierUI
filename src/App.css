@@ -50,6 +50,9 @@
 }
 
 :root {
+  /* Sidebar open/close (see "Sidebar easing"); the composer moves at the same pace. */
+  --panel-duration: 200ms;
+  --panel-ease: cubic-bezier(0.2, 0, 0, 1);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -298,8 +301,8 @@
   [data-slot="sidebar-container"],
   [data-slot="sidebar"][data-mobile="true"]
 ) {
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  transition-timing-function: var(--panel-ease);
+  animation-timing-function: var(--panel-ease);
 
   @media (prefers-reduced-motion: reduce) {
     transition-duration: 0.01ms;

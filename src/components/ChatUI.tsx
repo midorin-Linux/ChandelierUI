@@ -10,15 +10,29 @@ import {
 } from "react"
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso"
 import {
+  ArrowDownIcon,
+  BoxIcon,
   BrainIcon,
   Check,
   ChevronLeft,
   ChevronRight,
   Copy,
+  MessageSquareIcon,
   Pencil,
+  PlusIcon,
   RefreshCw,
+  ServerIcon,
+  SettingsIcon,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/src/components/ui/empty"
 import { Textarea } from "@/src/components/ui/textarea"
 import { MarkdownRenderer } from "@/src/components/MarkdownRenderer"
 import {
@@ -30,6 +44,7 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/src/components/ui/trace"
+import { errorHint } from "@/src/lib/errorHint"
 import { awaitsReply } from "@/src/lib/retry"
 import { children, siblings } from "@/src/lib/sessionTree"
 import { isSubmitEnter } from "@/src/lib/utils"
@@ -41,15 +56,19 @@ import {
   useActiveStream,
   useBusy,
   useChatContext,
+  useChatStore,
   useError,
+  useErrorCause,
   useMessages,
   useSession,
 } from "@/src/stores/chat"
-import type { ChatMessage } from "@/src/types/chat"
+import { useSettingsStore } from "@/src/stores/settings"
+import { openSettings } from "@/src/stores/settingsDialog"
+import type { StreamMessage } from "@/src/lib/completionStream"
 import type { MessageNode } from "@/src/types/session"
 
 /** A stored message, or the reply still streaming in (it has no id yet). */
-type Row = MessageNode | ChatMessage
+type Row = MessageNode | StreamMessage
 
 interface ListContext {
   select: (nodeId: string) => void
@@ -57,11 +76,24 @@ interface ListContext {
 
 // Rows are padded, not margined: Virtuoso measures each row's own box.
 const column = "mx-auto w-full max-w-3xl border-x border-transparent px-4"
+// Copy, edit and regenerate appear on hover or keyboard focus; version arrows stay.
+const reveal =
+  "opacity-0 transition-opacity group-hover/message:opacity-100 focus-visible:opacity-100"
 
 export function ChatUI() {
   // One list per session: it opens at the bottom and keeps no scroll state from another chat.
   const activeId = useSession((s) => s.activeId)
-  return <Conversation key={activeId ?? "new"} />
+  // A new chat getting its id on the first send is the same conversation:
+  // remounting would lose that message's place at the top.
+  const firstSend = useChatStore((s) => s.sending && !s.switching)
+  const [list, setList] = useState({ id: activeId, generation: 0 })
+  if (list.id !== activeId)
+    setList({
+      id: activeId,
+      generation:
+        list.id === null && firstSend ? list.generation : list.generation + 1,
+    })
+  return <Conversation key={list.generation} />
 }
 
 function Conversation() {
@@ -79,7 +111,14 @@ function Conversation() {
   // Cleared only by scrolling up, so content growing below the view keeps it set.
   const stuck = useRef(true)
   const lastTop = useRef(0)
+  const lastHeight = useRef(0)
   const scrollTarget = useRef<string | null>(null)
+  const [atBottom, setAtBottom] = useState(true)
+  // The user message just sent: it is scrolled to the top and the reply fills
+  // the screen below it. Null when the chat was opened rather than sent to.
+  const anchorId = useRef<string | null>(null)
+  const lastUserId = useRef<string | null | undefined>(undefined)
+  const rowsRef = useRef<Row[]>([])
   const context = useMemo<ListContext>(
     () => ({
       select: (id) => {
@@ -98,80 +137,199 @@ function Conversation() {
     if (index >= 0)
       list.current?.scrollToIndex({ index, align: "start", offset: -16 })
   }, [messages])
-  // Keeps the bottom in view as the reply grows, unless the user scrolled up.
-  const stick = useCallback(() => {
-    const element = scroller.current
-    if (element && stuck.current) element.scrollTop = element.scrollHeight
-  }, [])
-  // Before paint, for the DOM React just wrote; rows Virtuoso sizes afterwards are
-  // caught by `totalListHeightChanged`.
-  useLayoutEffect(stick, [stick, partialMessage, isPending, error])
   const rows = useMemo<Row[]>(
     () => (partialMessage ? [...messages, partialMessage] : messages),
     [messages, partialMessage]
   )
-  return (
-    <Virtuoso
-      ref={list}
-      className="min-h-0 w-full flex-1 text-[0.9rem]"
-      // No live region: rows remount while scrolling and would be re-announced.
-      // The footer's status line announces progress.
-      role="region"
-      aria-label="Conversation"
-      data={rows}
-      context={context}
-      components={components}
-      computeItemKey={(_, row) => ("id" in row ? row.id : "stream")}
-      initialTopMostItemIndex={{ index: "LAST", align: "end" }}
-      scrollerRef={(element) => {
-        scroller.current = element instanceof HTMLElement ? element : null
-      }}
-      onScroll={(event) => {
-        const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
-        if (scrollHeight - scrollTop - clientHeight < 32) stuck.current = true
-        else if (scrollTop < lastTop.current) stuck.current = false
-        lastTop.current = scrollTop
-      }}
-      // Growth outside a delta: late highlighting, the finished reply's buttons.
-      totalListHeightChanged={stick}
-      // Rows render before they scroll in, so tall replies don't pop in.
-      increaseViewportBy={{ top: 800, bottom: 400 }}
-      // Jump to the user's own new message, even from above. Off otherwise: while
-      // on, Virtuoso also chases a growing last row and pulls back a user who scrolled up.
-      followOutput={
-        rows[rows.length - 1]?.role === "user" ? () => "auto" : false
-      }
-      itemContent={(_, row) =>
-        "id" in row ? (
-          <MessageRow
-            message={row}
-            allMessages={allMessages}
-            busy={busy}
-            canSend={canSend}
-            onSelect={context.select}
-          />
-        ) : (
-          <div className={`${column} pb-4`}>
-            <AssistantMessage
-              message={row}
-              isPending={isPending}
-              failed={error !== null}
-            />
-          </div>
+  // Runs before the sticking effect below, in the same commit.
+  useLayoutEffect(() => {
+    rowsRef.current = rows
+    // A new last user message (send, edit or regenerate) becomes the anchor.
+    const tail = messages[messages.length - 1]
+    const tailUserId = tail?.role === "user" ? tail.id : null
+    if (lastUserId.current === tailUserId) return
+    // The first render is opening the chat, not sending.
+    if (lastUserId.current !== undefined && tail?.role === "user") {
+      anchorId.current = tail.id
+      // Scrolling to the bottom now puts the anchor at the top (see updateSpacer).
+      stuck.current = true
+    }
+    lastUserId.current = tailUserId
+  }, [rows, messages])
+  /**
+   * Pads the footer so the anchor can sit at the top while its reply is shorter
+   * than the screen; shrinks to nothing once the reply fills it. Also exposes
+   * the list and anchor heights, which size the thinking window.
+   */
+  const updateSpacer = useCallback(() => {
+    const element = scroller.current
+    if (!element) return
+    element.style.setProperty("--list-height", `${element.clientHeight}px`)
+    const index = anchorId.current
+      ? rowsRef.current.findIndex(
+          (row) => "id" in row && row.id === anchorId.current
         )
-      }
-    />
+      : -1
+    const row =
+      index >= 0 ? element.querySelector(`[data-index="${index}"]`) : null
+    const footer = element.querySelector("[data-slot=list-footer]")
+    // Anchored but not in the DOM this instant (Virtuoso re-rendering): keep the
+    // last measurement rather than collapse the spacer.
+    if (index >= 0 && (!row || !footer)) return
+    let spacer = 0
+    let anchorHeight = 0
+    if (row && footer) {
+      const current =
+        parseFloat(element.style.getPropertyValue("--turn-spacer")) || 0
+      const rect = row.getBoundingClientRect()
+      // From the anchor's top to the end of the list, without the spacer.
+      // (scrollHeight can't be used: it never drops below the viewport.)
+      const below = footer.getBoundingClientRect().bottom - rect.top - current
+      // 16px: the same gap above the anchor as the list's header.
+      spacer = Math.max(0, element.clientHeight - 16 - below)
+      anchorHeight = rect.height
+    }
+    element.style.setProperty("--turn-spacer", `${spacer}px`)
+    element.style.setProperty("--anchor-height", `${anchorHeight}px`)
+  }, [])
+  // Keeps the bottom in view as the reply grows, unless the user scrolled up.
+  // With an anchor, the bottom is the anchor at the top until the reply overflows.
+  const stick = useCallback(() => {
+    updateSpacer()
+    const element = scroller.current
+    if (element && stuck.current) element.scrollTop = element.scrollHeight
+  }, [updateSpacer])
+  // Before paint, for the DOM React just wrote; rows Virtuoso sizes afterwards are
+  // caught by `totalListHeightChanged`.
+  useLayoutEffect(stick, [stick, rows, isPending, error])
+  useEffect(() => {
+    const element = scroller.current
+    if (!element) return
+    const observer = new ResizeObserver(stick)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [stick])
+  return (
+    <>
+      <Virtuoso
+        ref={list}
+        className="min-h-0 w-full flex-1 text-[0.9rem]"
+        // No live region: rows remount while scrolling and would be re-announced.
+        // The footer's status line announces progress.
+        role="region"
+        aria-label="Conversation"
+        data={rows}
+        context={context}
+        components={components}
+        computeItemKey={(_, row) => ("id" in row ? row.id : "stream")}
+        initialTopMostItemIndex={{ index: "LAST", align: "end" }}
+        scrollerRef={(element) => {
+          scroller.current = element instanceof HTMLElement ? element : null
+        }}
+        onScroll={(event) => {
+          const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
+          if (scrollHeight - scrollTop - clientHeight < 32) stuck.current = true
+          // Moving up while the content shrank is the browser clamping (e.g. the
+          // spacer got smaller), not the user scrolling away.
+          else if (
+            scrollTop < lastTop.current &&
+            scrollHeight >= lastHeight.current
+          )
+            stuck.current = false
+          lastTop.current = scrollTop
+          lastHeight.current = scrollHeight
+        }}
+        // Growth outside a delta: late highlighting, the finished reply's buttons.
+        totalListHeightChanged={stick}
+        atBottomStateChange={setAtBottom}
+        atBottomThreshold={32}
+        // Rows render before they scroll in, so tall replies don't pop in.
+        increaseViewportBy={{ top: 800, bottom: 400 }}
+        itemContent={(_, row) =>
+          "id" in row ? (
+            <MessageRow
+              message={row}
+              allMessages={allMessages}
+              busy={busy}
+              canSend={canSend}
+              onSelect={context.select}
+            />
+          ) : (
+            <div className={`${column} pb-4`}>
+              <AssistantMessage
+                message={row}
+                isPending={isPending}
+                failed={error !== null}
+              />
+            </div>
+          )
+        }
+      />
+      {!atBottom && (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label="Scroll to latest"
+          className="absolute bottom-[calc(var(--composer-height,0px)+0.5rem)] left-1/2 z-10 -translate-x-1/2 rounded-full shadow-md"
+          onClick={() => {
+            stuck.current = true
+            // The scroller, not the last row: the footer below it holds status and errors.
+            const element = scroller.current
+            element?.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
+          }}
+        >
+          <ArrowDownIcon />
+        </Button>
+      )}
+    </>
   )
 }
 
 const components: Components<Row, ListContext> = {
   Header: () => <div className="h-4" />,
-  EmptyPlaceholder: () => (
-    <p className={`${column} text-sm text-muted-foreground`}>
-      Start a conversation. Chats are saved on this device.
-    </p>
-  ),
   Footer: ListFooter,
+}
+
+/** What a chat with no messages shows above the centered composer: the next step towards a first message. */
+export function EmptyConversation() {
+  const hasProvider = useSettingsStore((s) => s.presets.length > 0)
+  const { selectedModel, modelsLoading } = useChatContext()
+  const [Icon, title, description] = !hasProvider
+    ? [
+        ServerIcon,
+        "Add a provider to start",
+        "Connect any OpenAI-compatible endpoint, local or cloud.",
+      ]
+    : !selectedModel && !modelsLoading
+      ? [
+          BoxIcon,
+          "Choose a model",
+          "Pick one with the model button in the message box below.",
+        ]
+      : [
+          MessageSquareIcon,
+          "Start a conversation",
+          "Chats are saved on this device. Enter sends, Shift+Enter adds a line.",
+        ]
+  return (
+    <Empty className="p-0 pb-8">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+      {!hasProvider && (
+        <EmptyContent>
+          <Button onClick={() => openSettings("provider")}>
+            <PlusIcon />
+            Add provider
+          </Button>
+        </EmptyContent>
+      )}
+    </Empty>
+  )
 }
 
 /** Status, error and retry below the messages, then room for the composer that overlays the list. */
@@ -184,6 +342,9 @@ function ListFooter({ context }: { context?: ListContext }) {
   const { canSend } = useChatContext()
   const { message: partialMessage, isPending } = useActiveStream()
   const canRetry = canSend && awaitsReply(messages, busy)
+  const cause = useErrorCause()
+  const hint = errorHint(cause?.kind ?? null, cause?.status ?? null)
+  const settingsTab = hint.settings ?? (canSend ? null : "provider")
   // A user message that already has replies (e.g. a failed regenerate): let the user go back to them.
   const last = messages[messages.length - 1]
   const replies = last?.role === "user" ? children(allMessages, last.id) : []
@@ -196,7 +357,10 @@ function ListFooter({ context }: { context?: ListContext }) {
     />
   )
   return (
-    <div className={`${column} pb-[calc(var(--composer-height,0px)+1rem)]`}>
+    <div
+      data-slot="list-footer"
+      className={`${column} pb-[calc(var(--composer-height,0px)+1rem+var(--turn-spacer,0px))]`}
+    >
       {isPending && (
         <p role="status" className="text-sm text-muted-foreground">
           {partialMessage ? "Receiving response…" : "Waiting for the model…"}
@@ -211,8 +375,7 @@ function ListFooter({ context }: { context?: ListContext }) {
             {error}
           </p>
           <p className="text-sm text-muted-foreground">
-            Your messages are kept. Check the local server, provider URL, model
-            ID, and effort support, then retry with the current settings.
+            Your messages are kept. {hint.hint}
           </p>
           {!canSend && (
             <p role="status" className="text-sm text-muted-foreground">
@@ -223,6 +386,12 @@ function ListFooter({ context }: { context?: ListContext }) {
             <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
               Retry
             </Button>
+            {settingsTab && (
+              <Button variant="ghost" onClick={() => openSettings(settingsTab)}>
+                <SettingsIcon />
+                {settingsTab === "general" ? "General" : "Provider"} settings
+              </Button>
+            )}
             {strandedNav}
           </div>
         </div>
@@ -268,7 +437,7 @@ const MessageRow = memo(function MessageRow({
     />
   )
   return (
-    <div className={`${column} pb-4`}>
+    <div className={`${column} group/message pb-4`}>
       {message.role === "assistant" ? (
         <AssistantMessage
           message={message}
@@ -279,6 +448,7 @@ const MessageRow = memo(function MessageRow({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Regenerate response"
+                className={reveal}
                 disabled={busy || !canSend}
                 onClick={() => onRegenerate(message)}
               >
@@ -394,23 +564,27 @@ function UserMessage({
               }
             }}
           />
-          <div className="flex justify-end gap-2">
+          <div className="flex items-center justify-end gap-2">
+            <p className="mr-auto text-xs text-muted-foreground">
+              Saved as a new version; the original stays available.
+            </p>
             <Button variant="outline" onClick={() => setDraft(null)}>
               Cancel
             </Button>
             <Button disabled={!draft.trim() || disabled} onClick={submit}>
-              Send
+              Save &amp; submit
             </Button>
           </div>
         </div>
       )}
       <div className="flex items-center justify-end gap-1">
         {nav}
-        <CopyButton text={message.content} />
+        <CopyButton text={message.content} className={reveal} />
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Edit message"
+          className={reveal}
           disabled={disabled || !canEdit || draft !== null}
           onClick={() => setDraft(message.content)}
         >
@@ -421,7 +595,7 @@ function UserMessage({
   )
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false)
   const timer = useRef<number>(undefined)
   useEffect(() => () => window.clearTimeout(timer.current), [])
@@ -440,11 +614,22 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       size="icon-sm"
       aria-label={copied ? "Copied" : "Copy message"}
+      className={copied ? undefined : className}
       onClick={() => void copy()}
     >
       {copied ? <Check size={16} /> : <Copy size={16} />}
     </Button>
   )
+}
+
+/** "Thought for 12s" when the reply recorded its thinking time. */
+function thoughtFor(message: Row) {
+  const ms = "reasoning_ms" in message ? message.reasoning_ms : undefined
+  if (ms == null) return "Thinking"
+  const secs = Math.max(1, Math.round(ms / 1000))
+  return secs < 60
+    ? `Thought for ${secs}s`
+    : `Thought for ${Math.floor(secs / 60)}m ${secs % 60}s`
 }
 
 function AssistantMessage({
@@ -453,7 +638,7 @@ function AssistantMessage({
   failed = false,
   actions,
 }: {
-  message: ChatMessage
+  message: Row
   isPending?: boolean
   failed?: boolean
   actions?: ReactNode
@@ -466,6 +651,11 @@ function AssistantMessage({
     setWasThinking(thinking)
     if (!thinking) setOpen(false)
   }
+  const reasoningBox = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const box = reasoningBox.current
+    if (thinking && box) box.scrollTop = box.scrollHeight
+  }, [thinking, message.reasoning])
   return (
     <article
       aria-label={
@@ -488,14 +678,25 @@ function AssistantMessage({
                     ? "Thinking interrupted"
                     : thinking
                       ? "Thinking…"
-                      : "Thinking"}
+                      : thoughtFor(message)}
                 </TraceTitle>
               </TraceLine>
             </TraceCollapsibleTrigger>
             <TraceCollapsibleContent>
-              <p className="whitespace-pre-wrap wrap-break-word">
-                {message.reasoning}
-              </p>
+              {/* While thinking, a window filling the screen below the sent message
+                  that follows the newest text, so the "Thinking…" line stays in view. */}
+              <div
+                ref={reasoningBox}
+                className={
+                  thinking
+                    ? "max-h-[max(12rem,calc(var(--list-height,100dvh)-var(--composer-height,0px)-var(--anchor-height,0px)-7rem))] overflow-y-auto"
+                    : undefined
+                }
+              >
+                <p className="whitespace-pre-wrap wrap-break-word">
+                  {message.reasoning}
+                </p>
+              </div>
             </TraceCollapsibleContent>
           </TraceCollapsible>
         </Trace>
@@ -505,7 +706,7 @@ function AssistantMessage({
       )}
       {message.content && !isPending && (
         <div className="flex items-center gap-1">
-          <CopyButton text={message.content} />
+          <CopyButton text={message.content} className={reveal} />
           {actions}
         </div>
       )}
