@@ -3,7 +3,12 @@ import { ChevronsUpDownIcon, RotateCcwIcon } from "lucide-react"
 import { EffortPicker } from "@/src/components/EffortPicker"
 import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { useTheme } from "@/src/components/ThemeProvider"
-import { isTheme, themeOptions } from "@/src/components/themeOptions"
+import {
+  baseColorOptions,
+  isBaseColor,
+  isTheme,
+  themeOptions,
+} from "@/src/components/themeOptions"
 import { Button } from "@/src/components/ui/button"
 import {
   Field,
@@ -63,7 +68,7 @@ function Section({
 }
 
 export function GeneralSettings() {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme, baseColor, setBaseColor } = useTheme()
 
   return (
     <div className="flex flex-col gap-8">
@@ -83,6 +88,26 @@ export function GeneralSettings() {
               {themeOptions.map(({ value, label, icon: Icon }) => (
                 <TabsTrigger key={value} value={value}>
                   <Icon />
+                  {label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </Field>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle id="base-color-label">Base color</FieldTitle>
+            <FieldDescription>
+              The tint of backgrounds, borders, and text.
+            </FieldDescription>
+          </FieldContent>
+          <Tabs
+            value={baseColor}
+            onValueChange={(value) => isBaseColor(value) && setBaseColor(value)}
+          >
+            <TabsList aria-labelledby="base-color-label">
+              {baseColorOptions.map(({ value, label }) => (
+                <TabsTrigger key={value} value={value}>
                   {label}
                 </TabsTrigger>
               ))}

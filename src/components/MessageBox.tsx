@@ -49,7 +49,7 @@ export function MessageBox() {
     <div className="w-full shrink-0 bg-background pb-4">
       <FieldGroup>
         <Field className="flex flex-col gap-1">
-          <InputGroup>
+          <InputGroup className="bg-composer shadow-[0_1px_3px_rgb(0_0_0/0.04)] has-[[data-slot=input-group-control]:focus-visible]:ring-1 has-[[data-slot=input-group-control]:focus-visible]:ring-ring/30">
             <InputGroupTextarea
               ref={field}
               placeholder={"Type a message..."}

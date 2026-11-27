@@ -40,6 +40,7 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-composer: var(--composer);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -54,6 +55,7 @@
   --panel-duration: 200ms;
   --panel-ease: cubic-bezier(0.2, 0, 0, 1);
   --background: oklch(1 0 0);
+  --composer: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -120,6 +122,118 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* Olive base color from midorin-Linux/ProjectAutomata-Web, written in oklch:
+   hex values break color-mix(in oklch) in Chromium (the hue drops to pink).
+   The light sidebar is a step darker than the page, like Simple. */
+[data-base-color="olive"] {
+  --background: oklch(0.975 0.008 91.5);
+  /* A step lighter than the page so the message box stands out. */
+  --composer: oklch(0.995 0.003 91.5);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(0.975 0.008 91.5);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(0.975 0.008 91.5);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.975 0.008 91.5);
+  --secondary: oklch(0.927 0.02 106.8);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.927 0.02 106.8);
+  --muted-foreground: oklch(0.518 0.058 122.7);
+  --accent: oklch(0.927 0.02 106.8);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.561 0.13 31.6);
+  --border: oklch(0.874 0.027 113.9);
+  --input: oklch(0.874 0.027 113.9);
+  --ring: oklch(0.639 0.054 119);
+  --chart-1: oklch(0.874 0.027 113.9);
+  --chart-2: oklch(0.724 0.05 114.1);
+  --chart-3: oklch(0.639 0.054 119);
+  --chart-4: oklch(0.518 0.058 122.7);
+  --chart-5: oklch(0.333 0.039 126.5);
+  --sidebar: oklch(0.96 0.01 95);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.975 0.008 91.5);
+  --sidebar-accent: oklch(0.89 0.024 108);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.874 0.027 113.9);
+  --sidebar-ring: oklch(0.639 0.054 119);
+}
+
+.dark[data-base-color="olive"] {
+  --background: oklch(0.27 0.016 129.1);
+  --foreground: oklch(0.975 0.008 91.5);
+  --card: oklch(0.333 0.039 126.5);
+  --card-foreground: oklch(0.975 0.008 91.5);
+  --popover: oklch(0.333 0.039 126.5);
+  --popover-foreground: oklch(0.975 0.008 91.5);
+  --primary: oklch(0.724 0.05 114.1);
+  --primary-foreground: oklch(0.27 0.016 129.1);
+  --secondary: oklch(0.424 0.046 125.7);
+  --secondary-foreground: oklch(0.975 0.008 91.5);
+  --muted: oklch(0.424 0.046 125.7);
+  --muted-foreground: oklch(0.874 0.027 113.9);
+  --accent: oklch(0.518 0.058 122.7);
+  --accent-foreground: oklch(0.975 0.008 91.5);
+  --destructive: oklch(0.676 0.121 32.4);
+  --border: oklch(0.874 0.027 113.9 / 10%);
+  --input: oklch(0.874 0.027 113.9 / 15%);
+  --ring: oklch(0.639 0.054 119);
+  --chart-1: oklch(0.874 0.027 113.9);
+  --chart-2: oklch(0.724 0.05 114.1);
+  --chart-3: oklch(0.639 0.054 119);
+  --chart-4: oklch(0.518 0.058 122.7);
+  --chart-5: oklch(0.424 0.046 125.7);
+  --sidebar: oklch(0.333 0.039 126.5);
+  --sidebar-foreground: oklch(0.975 0.008 91.5);
+  --sidebar-primary: oklch(0.724 0.05 114.1);
+  --sidebar-primary-foreground: oklch(0.27 0.016 129.1);
+  --sidebar-accent: oklch(0.424 0.046 125.7);
+  --sidebar-accent-foreground: oklch(0.975 0.008 91.5);
+  --sidebar-border: oklch(0.874 0.027 113.9 / 10%);
+  --sidebar-ring: oklch(0.639 0.054 119);
+}
+
+/* Thin scrollbars tinted from the muted text color, so they follow the base
+   color and theme. Chromium (WebView2) ignores ::-webkit-scrollbar once
+   scrollbar-width/color are set, so the standard properties are only a
+   fallback for engines without the pseudo-elements. */
+:root {
+  --scrollbar-thumb: color-mix(
+    in oklch,
+    var(--muted-foreground) 25%,
+    transparent
+  );
+  --scrollbar-thumb-hover: color-mix(
+    in oklch,
+    var(--muted-foreground) 45%,
+    transparent
+  );
+}
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background: var(--scrollbar-thumb) padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 @layer base {
