@@ -7,6 +7,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandShortcut,
 } from "@/src/components/ui/command"
 import {
   DialogContent,
@@ -39,21 +40,29 @@ export function SearchChats({ onDone }: { onDone: () => void }) {
         </DialogDescription>
       </header>
       {/* Filtering is ours (titles, grouped by date), not cmdk's fuzzy match. */}
-      <Command shouldFilter={false} className="min-h-0 flex-1 rounded-none!">
+      <Command
+        shouldFilter={false}
+        className="min-h-0 flex-1 gap-2 rounded-none! p-3"
+      >
         <CommandInput
           placeholder="Search by title"
           value={query}
           onValueChange={setQuery}
         />
-        <CommandList className="max-h-none flex-1">
+        <CommandList className="max-h-none flex-1 scroll-pt-2 pt-1">
           <CommandEmpty>
             {sessions.length === 0 ? "No chats yet." : "No chats match."}
           </CommandEmpty>
           {groups.map((group) => (
-            <CommandGroup key={group.label} heading={group.label}>
+            <CommandGroup
+              key={group.label}
+              heading={group.label}
+              className="pb-3"
+            >
               {group.sessions.map((session) => (
                 <CommandItem
                   key={session.id}
+                  className="gap-3 px-3 py-2.5"
                   value={session.id}
                   onSelect={() => {
                     if (session.id !== activeId) openSession(session.id)
@@ -68,12 +77,13 @@ export function SearchChats({ onDone }: { onDone: () => void }) {
                   ) : (
                     <MessageSquareIcon />
                   )}
-                  <span className="truncate">
+                  <span className="min-w-0 flex-1 truncate">
                     {session.title || "Untitled"}
                   </span>
-                  <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {/* A shortcut slot: right-aligned, and it hides cmdk's check icon. */}
+                  <CommandShortcut className="shrink-0 tracking-normal tabular-nums">
                     {new Date(session.updated_at).toLocaleDateString()}
-                  </span>
+                  </CommandShortcut>
                 </CommandItem>
               ))}
             </CommandGroup>
