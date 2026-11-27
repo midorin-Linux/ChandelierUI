@@ -1,64 +1,82 @@
-import { useCallback, useState } from "react"
-import { Tabs, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
-import { useTheme } from "@/src/components/ThemeProvider"
-import {
-  Combobox,
-  ComboboxContent,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-} from "@/src/components/ui/combobox"
-import { Textarea } from "@/src/components/ui/textarea"
-import { efforts } from "@/src/types/chat"
-import { presetLabel } from "@/src/stores/chat"
-import { useModelsStore } from "@/src/stores/models"
-import { providerModelsView } from "@/src/lib/models"
+import { useState } from "react"
+import { RotateCcwIcon } from "lucide-react"
+import { EffortPicker } from "@/src/components/EffortPicker"
 import { ModelBrowser } from "@/src/components/ModelBrowser"
+import { useTheme } from "@/src/components/ThemeProvider"
 import { Button } from "@/src/components/ui/button"
 import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+  FieldSeparator,
+  FieldTitle,
+} from "@/src/components/ui/field"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/src/components/ui/input-group"
+import { Tabs, TabsList, TabsTrigger } from "@/src/components/ui/tabs"
+import { Textarea } from "@/src/components/ui/textarea"
+import { providerModelsView } from "@/src/lib/models"
+import { presetLabel } from "@/src/stores/chat"
+import { useModelsStore } from "@/src/stores/models"
+import {
+  DEFAULT_TIMEOUT_SECS,
   isTimeoutSecs,
   MAX_TIMEOUT_SECS,
   setDefaults,
   setTimeoutSecs,
   useSettingsStore,
 } from "@/src/stores/settings"
-import { Input } from "@/src/components/ui/input"
-import { Separator } from "@/src/components/ui/separator"
+import type { ReactNode } from "react"
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div>
+        <h3 className="text-base font-semibold">{title}</h3>
+        {description && (
+          <p className="text-sm text-muted-foreground">{description}</p>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
 
 export function GeneralSettings() {
   const defaults = useSettingsStore((s) => s.defaults)
-  const timeoutSecs = useSettingsStore((s) => s.timeoutSecs)
   const { theme, setTheme } = useTheme()
-  // A body-level portal counts as outside the Radix dialog, so clicks never select.
-  const [dialog, setDialog] = useState<HTMLElement | null>(null)
-  const dialogRef = useCallback(
-    (node: HTMLElement | null) =>
-      setDialog(
-        node?.closest<HTMLElement>("[data-slot=dialog-content]") ?? null
-      ),
-    []
-  )
 
   return (
-    <div ref={dialogRef} className="flex flex-col gap-8">
-      {/*Appearance*/}
-      <div className="flex flex-col gap-3">
-        <h3 className="text-base font-semibold">Appearance</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-sm">Theme</div>
-            <p className="text-sm text-muted-foreground">
+    <div className="flex flex-col gap-8">
+      <Section title="Appearance">
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle id="theme-label">Theme</FieldTitle>
+            <FieldDescription>
               Choose light, dark, or follow your system setting.
-            </p>
-          </div>
+            </FieldDescription>
+          </FieldContent>
           <Tabs
             value={theme}
             onValueChange={(value) =>
               setTheme(value as "system" | "light" | "dark")
             }
           >
-            <TabsList>
+            <TabsList aria-labelledby="theme-label">
               {(["system", "light", "dark"] as const).map((value) => (
                 <TabsTrigger key={value} value={value} className="capitalize">
                   {value}
@@ -66,97 +84,110 @@ export function GeneralSettings() {
               ))}
             </TabsList>
           </Tabs>
-        </div>
-      </div>
+        </Field>
+      </Section>
 
-      {/*Response*/}
-      <div className="flex flex-col gap-3">
-        <h3 className="text-base font-semibold">Response</h3>
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <label htmlFor="response-timeout" className="text-sm">
-              Timeout (seconds)
-            </label>
-            <p className="text-sm text-muted-foreground">
-              Longest wait without receiving data from the provider (1–
-              {MAX_TIMEOUT_SECS}). The timer restarts whenever data arrives.
-            </p>
-          </div>
-          {/* Uncontrolled, so the field can be empty while typing. */}
-          <Input
-            id="response-timeout"
-            type="number"
-            min={1}
-            max={MAX_TIMEOUT_SECS}
-            className="w-24"
-            defaultValue={timeoutSecs}
-            onChange={(e) => {
-              const value = e.target.valueAsNumber
-              if (isTimeoutSecs(value)) setTimeoutSecs(value)
-            }}
-            // Invalid input is never saved, so show the saved value again.
-            onBlur={(e) => {
-              e.target.value = String(useSettingsStore.getState().timeoutSecs)
-            }}
-          />
-        </div>
-      </div>
+      <Section title="Response">
+        <TimeoutField />
+      </Section>
 
-      {/*New chat*/}
-      <div className="flex flex-col gap-3">
-        <div>
-          <h3 className="text-base font-semibold">New chat</h3>
-          <p className="text-sm text-muted-foreground">
-            What a new chat starts with. Changing these never affects existing
-            chats.
-          </p>
-        </div>
+      <Section
+        title="New chat"
+        description="What a new chat starts with. Changing these never affects existing chats."
+      >
         <DefaultModel />
-        <Separator />
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <div id="default-effort-label" className="text-sm">
-              Effort
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Reasoning effort for new chats.
-            </p>
-          </div>
-          <Combobox
-            items={efforts}
+        <FieldSeparator />
+        <Field>
+          <FieldTitle id="default-effort-label">Effort</FieldTitle>
+          <EffortPicker
             value={defaults.effort}
-            onValueChange={(value) => value && setDefaults({ effort: value })}
-          >
-            <ComboboxInput
-              aria-labelledby="default-effort-label"
-              placeholder={"Select an effort..."}
-            />
-            <ComboboxContent container={dialog}>
-              <ComboboxEmpty>No items found.</ComboboxEmpty>
-              <ComboboxList>
-                {(item) => (
-                  <ComboboxItem key={item} value={item}>
-                    {item}
-                  </ComboboxItem>
-                )}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
-        </div>
-        <Separator />
-        <div className="flex flex-col gap-2">
-          <label htmlFor="default-system-prompt" className="text-sm">
-            System prompt
-          </label>
+            onChange={(effort) => setDefaults({ effort })}
+            labelledBy="default-effort-label"
+            hintId="default-effort-hint"
+          />
+        </Field>
+        <FieldSeparator />
+        <Field>
+          <FieldLabel htmlFor="default-system-prompt">System prompt</FieldLabel>
           <Textarea
             id="default-system-prompt"
             placeholder="You are a helpful assistant."
             value={defaults.systemPrompt}
             onChange={(e) => setDefaults({ systemPrompt: e.target.value })}
           />
-        </div>
-      </div>
+        </Field>
+      </Section>
     </div>
+  )
+}
+
+/** Saved only when valid; an invalid entry is explained, and dropped on blur. */
+function TimeoutField() {
+  const timeoutSecs = useSettingsStore((s) => s.timeoutSecs)
+  // Text, so the field can be empty while typing.
+  const [draft, setDraft] = useState(String(timeoutSecs))
+  const value = Number(draft)
+  const invalid = !isTimeoutSecs(value)
+
+  return (
+    <Field orientation="horizontal" data-invalid={invalid || undefined}>
+      <FieldContent>
+        <FieldLabel htmlFor="response-timeout">Timeout</FieldLabel>
+        <FieldDescription id="response-timeout-hint">
+          Longest wait without receiving data from the provider. The timer
+          restarts whenever data arrives.
+        </FieldDescription>
+        {invalid && (
+          <FieldError id="response-timeout-error">
+            Enter a whole number from 1 to {MAX_TIMEOUT_SECS}.
+          </FieldError>
+        )}
+      </FieldContent>
+      <div className="flex shrink-0 items-center gap-1">
+        {timeoutSecs !== DEFAULT_TIMEOUT_SECS && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Reset to ${DEFAULT_TIMEOUT_SECS} seconds`}
+            title={`Reset to ${DEFAULT_TIMEOUT_SECS} seconds`}
+            onClick={() => {
+              setTimeoutSecs(DEFAULT_TIMEOUT_SECS)
+              setDraft(String(DEFAULT_TIMEOUT_SECS))
+            }}
+          >
+            <RotateCcwIcon />
+          </Button>
+        )}
+        <InputGroup className="w-32">
+          <InputGroupInput
+            id="response-timeout"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={MAX_TIMEOUT_SECS}
+            aria-invalid={invalid || undefined}
+            aria-describedby={
+              invalid
+                ? "response-timeout-hint response-timeout-error"
+                : "response-timeout-hint"
+            }
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              const next = Number(e.target.value)
+              if (e.target.value.trim() && isTimeoutSecs(next))
+                setTimeoutSecs(next)
+            }}
+            onBlur={() =>
+              setDraft(String(useSettingsStore.getState().timeoutSecs))
+            }
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupText>sec</InputGroupText>
+          </InputGroupAddon>
+        </InputGroup>
+      </div>
+    </Field>
   )
 }
 

@@ -1,10 +1,20 @@
 import {
+  ChevronDownIcon,
   CircleAlertIcon,
   KeyRoundIcon,
   LoaderCircleIcon,
   PlusIcon,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/src/components/ui/dropdown-menu"
+import { providerTemplates } from "@/src/lib/providerPresets"
 import { providerModelsView } from "@/src/lib/models"
 import { presetLabel as label } from "@/src/stores/chat"
 import { useHasApiKey } from "@/src/stores/apiKeys"
@@ -28,7 +38,8 @@ export function ProviderList({
   /** The default model's provider, if a default model is set. */
   defaultId: string | null
   onEdit: (id: string) => void
-  onAdd: () => void
+  /** Without a template, a blank preset is added. */
+  onAdd: (template?: Omit<ProviderPreset, "id">) => void
 }) {
   return (
     <nav
@@ -48,10 +59,42 @@ export function ProviderList({
           </li>
         ))}
       </ul>
-      <Button variant="outline" size="sm" onClick={onAdd}>
-        <PlusIcon />
-        Add provider
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm">
+            <PlusIcon />
+            Add provider
+            <ChevronDownIcon data-icon="inline-end" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-56">
+          <DropdownMenuLabel>Local</DropdownMenuLabel>
+          {providerTemplates
+            .filter((t) => t.local)
+            .map((template) => (
+              <TemplateItem
+                key={template.name}
+                template={template}
+                onAdd={onAdd}
+              />
+            ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>Cloud</DropdownMenuLabel>
+          {providerTemplates
+            .filter((t) => !t.local)
+            .map((template) => (
+              <TemplateItem
+                key={template.name}
+                template={template}
+                onAdd={onAdd}
+              />
+            ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => onAdd()}>
+            Custom endpoint…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <p className="px-1 text-xs text-muted-foreground">
         Any OpenAI-compatible endpoint. Models from every provider are listed in
         the model picker.
@@ -109,5 +152,23 @@ function ProviderRow({
         </span>
       </span>
     </Button>
+  )
+}
+
+function TemplateItem({
+  template,
+  onAdd,
+}: {
+  template: (typeof providerTemplates)[number]
+  onAdd: (template: Omit<ProviderPreset, "id">) => void
+}) {
+  return (
+    <DropdownMenuItem
+      className="flex-col items-start gap-0"
+      onSelect={() => onAdd({ name: template.name, baseUrl: template.baseUrl })}
+    >
+      <span>{template.name}</span>
+      <span className="text-xs text-muted-foreground">{template.baseUrl}</span>
+    </DropdownMenuItem>
   )
 }

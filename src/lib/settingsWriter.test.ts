@@ -37,3 +37,38 @@ test("writes land in call order", async () => {
     ["a", 3],
   ])
 })
+
+test("status counts unsaved values and reports failures until a later success", async () => {
+  let fail = false
+  const failing = createSettingsWriter(
+    {
+      setSetting: async () => {
+        if (fail) throw new Error("disk full")
+      },
+    },
+    10_000
+  )
+  const seen: number[] = []
+  const unsubscribe = failing.subscribe(() =>
+    seen.push(failing.status().pending)
+  )
+  failing.setDebounced("prompt", "a")
+  assert.equal(failing.status().pending, 1, "A debounced value is unsaved")
+  await failing.flush()
+  assert.deepEqual(failing.status(), { pending: 0, error: null })
+  assert(seen.length > 0, "Listeners hear about changes")
+
+  fail = true
+  const original = console.error
+  console.error = () => {}
+  failing.set("a", 1)
+  await failing.flush()
+  console.error = original
+  assert.equal(failing.status().error, "disk full")
+
+  fail = false
+  failing.set("a", 2)
+  await failing.flush()
+  assert.equal(failing.status().error, null, "A later success clears it")
+  unsubscribe()
+})

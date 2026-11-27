@@ -4,6 +4,7 @@ import { DialogContent, DialogTitle } from "@/src/components/ui/dialog"
 import { Button } from "@/src/components/ui/button"
 import { GeneralSettings } from "@/src/components/setting/GeneralSettings"
 import { ProviderSettings } from "@/src/components/setting/ProviderSettings"
+import { SaveStatus } from "@/src/components/setting/SaveStatus"
 
 export type SettingsTab = "general" | "provider"
 
@@ -23,8 +24,9 @@ export function AppSetting({
 
   return (
     <DialogContent className="flex aspect-16/10 w-[min(80rem,calc(100%-2rem),calc((100dvh-2rem)*16/10))] flex-col overflow-hidden sm:max-w-none">
-      <header className="border-b px-4 py-4 pr-14">
+      <header className="flex items-center justify-between gap-4 border-b px-4 py-4 pr-14">
         <DialogTitle className="text-lg font-semibold">Settings</DialogTitle>
+        <SaveStatus />
       </header>
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <nav

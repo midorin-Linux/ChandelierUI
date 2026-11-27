@@ -17,6 +17,7 @@ import {
   add,
   deletePreset,
   sessionProvider,
+  uniqueName,
   update,
 } from "@/src/lib/providerPresets"
 import { retryHead } from "@/src/lib/retry"
@@ -517,10 +518,19 @@ export function renamePreset(id: string, name: string) {
   setPresets(update(presets, id, { name }), true)
 }
 
-/** Returns the new preset's id. The first preset also becomes the default provider. */
-export function addPreset() {
-  const preset = { id: crypto.randomUUID(), name: "New provider", baseUrl: "" }
+/**
+ * Adds a preset, from a template or blank, and returns its id.
+ * The first preset also becomes the default provider.
+ */
+export function addPreset(
+  template: Omit<ProviderPreset, "id"> = { name: "New provider", baseUrl: "" }
+) {
   const { presets, defaults } = useSettingsStore.getState()
+  const preset = {
+    id: crypto.randomUUID(),
+    name: uniqueName(presets, template.name),
+    baseUrl: template.baseUrl,
+  }
   setPresets(add(presets, preset))
   if (!defaults.providerId || !findPreset(defaults.providerId))
     setDefaults({ providerId: preset.id })

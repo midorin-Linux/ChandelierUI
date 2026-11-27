@@ -27,8 +27,8 @@ export function ProviderSettings() {
         inUseId={chatProviderId}
         defaultId={defaults.model ? defaults.providerId : null}
         onEdit={setEditingId}
-        onAdd={() => {
-          const id = addPreset()
+        onAdd={(template) => {
+          const id = addPreset(template)
           setEditingId(id)
           setAddedId(id)
         }}

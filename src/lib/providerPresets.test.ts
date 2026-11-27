@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
+  uniqueName,
   add,
   deletePreset,
   migrate,
@@ -101,5 +102,15 @@ test("sessionProvider", () => {
   assert(
     sessionProvider([a], undefined, "stale").id === null,
     "A default that no longer exists selects nothing"
+  )
+})
+
+test("names made from a template stay unique", () => {
+  const preset = (name: string) => ({ id: name, name, baseUrl: "" })
+  assert.equal(uniqueName([], "Ollama"), "Ollama")
+  assert.equal(uniqueName([preset("Ollama")], "Ollama"), "Ollama 2")
+  assert.equal(
+    uniqueName([preset("Ollama"), preset("Ollama 2")], "Ollama"),
+    "Ollama 3"
   )
 })

@@ -78,3 +78,26 @@ export function sessionProvider(
     missing: Boolean(providerId),
   }
 }
+
+/** Common endpoints offered when adding a provider; the URL can be edited afterwards. */
+export const providerTemplates = [
+  { name: "LM Studio", baseUrl: "http://localhost:1234/v1", local: true },
+  { name: "Ollama", baseUrl: "http://localhost:11434/v1", local: true },
+  { name: "llama.cpp", baseUrl: "http://localhost:8080/v1", local: true },
+  { name: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1", local: false },
+  { name: "OpenAI", baseUrl: "https://api.openai.com/v1", local: false },
+] as const satisfies readonly (Omit<ProviderPreset, "id"> & {
+  local: boolean
+})[]
+
+/**
+ * A name not used by `presets` yet: `base`, else "base 2", "base 3"…
+ * so two presets made from one template stay apart in the list.
+ */
+export function uniqueName(presets: readonly ProviderPreset[], base: string) {
+  const taken = new Set(presets.map((p) => p.name.trim()))
+  if (!taken.has(base)) return base
+  let n = 2
+  while (taken.has(`${base} ${n}`)) n++
+  return `${base} ${n}`
+}

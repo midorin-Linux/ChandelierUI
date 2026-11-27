@@ -14,9 +14,8 @@ import { Button } from "@/src/components/ui/button"
 import { ScrollArea } from "@/src/components/ui/scroll-area"
 import { SettingsIcon } from "lucide-react"
 import { ModelBrowser } from "@/src/components/ModelBrowser"
-import { Slider } from "@/src/components/ui/slider"
+import { EffortPicker } from "@/src/components/EffortPicker"
 import { Textarea } from "@/src/components/ui/textarea"
-import { efforts } from "@/src/types/chat"
 import { useSettingsStore } from "@/src/stores/settings"
 import {
   selectModel,
@@ -112,30 +111,18 @@ export function ModelSetting({
               </Field>
             </ScrollArea>
             <div className="shrink-0 px-4 py-4 border-t">
-              <span id="effort-label" className="text-sm font-medium">
-                Effort: {selectedEffort}
-              </span>
-              <div
-                className="flex justify-between text-xs text-muted-foreground"
-                aria-hidden="true"
+              <span
+                id="effort-label"
+                className="mb-2 block text-sm font-medium"
               >
-                {efforts.map((effort) => (
-                  <span key={effort}>{effort}</span>
-                ))}
-              </div>
-              <Slider
-                className="my-2"
-                aria-labelledby="effort-label"
-                aria-valuetext={selectedEffort}
-                value={[efforts.indexOf(selectedEffort)]}
-                onValueChange={([index]) => setEffort(efforts[index])}
-                min={0}
-                max={efforts.length - 1}
-                step={1}
+                Effort
+              </span>
+              <EffortPicker
+                value={selectedEffort}
+                onChange={setEffort}
+                labelledBy="effort-label"
+                hintId="effort-hint"
               />
-              <p className="text-xs text-muted-foreground">
-                Sent as reasoning_effort; off maps to none and max to xhigh.
-              </p>
             </div>
           </div>
         </section>
