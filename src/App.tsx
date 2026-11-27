@@ -1,10 +1,10 @@
 import "./App.css"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { Analysis } from "@/src/components/Analysis"
 import { TitleBar } from "@/src/components/TitleBar"
 import { ChatUI } from "@/src/components/ChatUI"
 import { MessageBox } from "@/src/components/MessageBox"
-import { AppSetting, type SettingsTab } from "@/src/components/AppSetting"
+import { AppSetting } from "@/src/components/AppSetting"
 import { Dialog } from "@/src/components/ui/dialog"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
@@ -13,6 +13,7 @@ import { settingsWriter } from "@/src/lib/api"
 import { init, useChatContext } from "@/src/stores/chat"
 import { loadMissingModels } from "@/src/stores/models"
 import { useSettingsStore } from "@/src/stores/settings"
+import { openSettings, useSettingsDialog } from "@/src/stores/settingsDialog"
 
 function App() {
   const loaded = useSettingsStore((s) => s.loaded)
@@ -24,37 +25,29 @@ function App() {
 }
 
 function Chat() {
-  const [appSettingsOpen, setAppSettingsOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general")
+  const { open: appSettingsOpen, tab: settingsTab } = useSettingsDialog()
   const { providerMissing } = useChatContext()
   const presets = useSettingsStore((s) => s.presets)
   // Every provider's models are listed, so each is fetched once its URL is set or changed.
   useEffect(() => loadMissingModels(presets), [presets])
 
-  function openProviderSettings() {
-    setSettingsTab("provider")
-    setAppSettingsOpen(true)
-  }
-
   return (
     <>
       <SidebarProvider>
-        <AppSidebar
-          onOpenSettings={() => {
-            // The menu opens settings at the start; shortcuts like the model
-            // dialog's "Manage providers" open a specific tab instead.
-            setSettingsTab("general")
-            setAppSettingsOpen(true)
-          }}
-        />
+        {/* The menu opens settings at the start; shortcuts like the model
+            dialog's "Manage providers" open a specific tab instead. */}
+        <AppSidebar onOpenSettings={() => openSettings()} />
         <Dialog
           open={appSettingsOpen}
           onOpenChange={(open) => {
-            setAppSettingsOpen(open)
+            useSettingsDialog.setState({ open })
             if (!open) void settingsWriter.flush()
           }}
         >
-          <AppSetting tab={settingsTab} onTabChange={setSettingsTab} />
+          <AppSetting
+            tab={settingsTab}
+            onTabChange={(tab) => useSettingsDialog.setState({ tab })}
+          />
         </Dialog>
         <div className="flex h-screen min-w-0 flex-1 justify-center">
           <div className="flex min-h-0 w-full flex-col">
@@ -86,7 +79,7 @@ function Chat() {
                     default provider instead.
                   </p>
                 )}
-                <MessageBox onOpenProviderSettings={openProviderSettings} />
+                <MessageBox />
               </div>
             </div>
           </div>

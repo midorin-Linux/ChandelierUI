@@ -20,11 +20,7 @@ import {
   useSession,
 } from "@/src/stores/chat"
 
-export function MessageBox({
-  onOpenProviderSettings,
-}: {
-  onOpenProviderSettings: () => void
-}) {
+export function MessageBox() {
   const { selectedModel, providerName } = useChatContext()
   const selectedEffort = useSession((s) => s.data.reasoning_effort)
   // Cancel shows only in the chat the reply streams into.
@@ -93,7 +89,7 @@ export function MessageBox({
                     </Badge>
                   </InputGroupButton>
                 </DialogTrigger>
-                <ModelSetting onOpenProviderSettings={onOpenProviderSettings} />
+                <ModelSetting />
               </Dialog>
               <div className="shrink-0">
                 {isPending ? (

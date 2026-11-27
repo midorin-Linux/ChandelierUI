@@ -17,6 +17,7 @@ import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { EffortPicker } from "@/src/components/EffortPicker"
 import { Textarea } from "@/src/components/ui/textarea"
 import { useSettingsStore } from "@/src/stores/settings"
+import { openSettings } from "@/src/stores/settingsDialog"
 import {
   selectModel,
   setEffort,
@@ -25,11 +26,7 @@ import {
   useSession,
 } from "@/src/stores/chat"
 
-export function ModelSetting({
-  onOpenProviderSettings,
-}: {
-  onOpenProviderSettings: () => void
-}) {
+export function ModelSetting() {
   const {
     providerId,
     providerName,
@@ -69,7 +66,7 @@ export function ModelSetting({
             <Button
               variant={presets.length === 0 ? "default" : "outline"}
               size="sm"
-              onClick={onOpenProviderSettings}
+              onClick={() => openSettings("provider")}
             >
               <SettingsIcon />
               Manage providers

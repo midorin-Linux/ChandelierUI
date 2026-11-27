@@ -6,7 +6,7 @@ import { GeneralSettings } from "@/src/components/setting/GeneralSettings"
 import { ProviderSettings } from "@/src/components/setting/ProviderSettings"
 import { SaveStatus } from "@/src/components/setting/SaveStatus"
 
-export type SettingsTab = "general" | "provider"
+import type { SettingsTab } from "@/src/stores/settingsDialog"
 
 const tabs: { id: SettingsTab; label: string; icon: ComponentType }[] = [
   { id: "general", label: "General", icon: SettingsIcon },
