@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { ReactNode } from "react"
-import { ChartColumnIcon } from "lucide-react"
+import { ChartColumnIcon, InfoIcon } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Progress } from "@/src/components/ui/progress"
 import {
@@ -23,6 +23,11 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/src/components/ui/tabs"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/src/components/ui/tooltip"
 import {
   contextUtilization,
   formatMetric,
@@ -123,11 +128,33 @@ function ContextBar({ percent }: { percent: number | null }) {
   )
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({
+  label,
+  help,
+  value,
+}: {
+  label: string
+  help: string
+  value: string
+}) {
   const unavailable = value === "Unavailable"
   return (
     <div className="min-w-0 rounded-lg border p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        {label}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={`About ${label}`}
+              className="rounded-sm hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            >
+              <InfoIcon className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-64">{help}</TooltipContent>
+        </Tooltip>
+      </div>
       <div
         className={`truncate text-2xl font-semibold tabular-nums ${unavailable ? "text-muted-foreground" : ""}`}
       >
@@ -226,18 +253,22 @@ export function Analysis() {
                 <div className="grid grid-cols-2 gap-3">
                   <Kpi
                     label="TTFT"
+                    help="Time to first token: from sending the request until the first visible text or reasoning arrives."
                     value={formatMetric(metrics.ttft_ms, "ms")}
                   />
                   <Kpi
                     label="E2E Latency"
+                    help="End-to-end latency: from sending the request until the reply finished."
                     value={formatMetric(metrics.e2e_ms, "ms")}
                   />
                   <Kpi
                     label="Output TPS"
+                    help="Output tokens per second, counted from the first visible content to the end."
                     value={formatMetric(metrics.output_tps, "tps")}
                   />
                   <Kpi
                     label="Total tokens"
+                    help="Input plus output tokens, as reported by the provider."
                     value={formatMetric(metrics.total_tokens, "tokens", 0)}
                   />
                 </div>
