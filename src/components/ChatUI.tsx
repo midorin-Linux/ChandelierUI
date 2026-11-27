@@ -22,6 +22,7 @@ import {
   PlusIcon,
   RefreshCw,
   ServerIcon,
+  SettingsIcon,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import {
@@ -43,6 +44,7 @@ import {
   TraceLine,
   TraceTitle,
 } from "@/src/components/ui/trace"
+import { errorHint } from "@/src/lib/errorHint"
 import { awaitsReply } from "@/src/lib/retry"
 import { children, siblings } from "@/src/lib/sessionTree"
 import { isSubmitEnter } from "@/src/lib/utils"
@@ -55,6 +57,7 @@ import {
   useBusy,
   useChatContext,
   useError,
+  useErrorCause,
   useMessages,
   useSession,
 } from "@/src/stores/chat"
@@ -258,6 +261,9 @@ function ListFooter({ context }: { context?: ListContext }) {
   const { canSend } = useChatContext()
   const { message: partialMessage, isPending } = useActiveStream()
   const canRetry = canSend && awaitsReply(messages, busy)
+  const cause = useErrorCause()
+  const hint = errorHint(cause?.kind ?? null, cause?.status ?? null)
+  const settingsTab = hint.settings ?? (canSend ? null : "provider")
   // A user message that already has replies (e.g. a failed regenerate): let the user go back to them.
   const last = messages[messages.length - 1]
   const replies = last?.role === "user" ? children(allMessages, last.id) : []
@@ -285,8 +291,7 @@ function ListFooter({ context }: { context?: ListContext }) {
             {error}
           </p>
           <p className="text-sm text-muted-foreground">
-            Your messages are kept. Check the local server, provider URL, model
-            ID, and effort support, then retry with the current settings.
+            Your messages are kept. {hint.hint}
           </p>
           {!canSend && (
             <p role="status" className="text-sm text-muted-foreground">
@@ -297,6 +302,12 @@ function ListFooter({ context }: { context?: ListContext }) {
             <Button variant="outline" disabled={!canRetry} onClick={onRetry}>
               Retry
             </Button>
+            {settingsTab && (
+              <Button variant="ghost" onClick={() => openSettings(settingsTab)}>
+                <SettingsIcon />
+                {settingsTab === "general" ? "General" : "Provider"} settings
+              </Button>
+            )}
             {strandedNav}
           </div>
         </div>
