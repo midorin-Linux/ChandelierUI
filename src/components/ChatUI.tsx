@@ -532,13 +532,23 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+/** "Thought for 12s" when the reply recorded its thinking time. */
+function thoughtFor(message: Row) {
+  const ms = "reasoning_ms" in message ? message.reasoning_ms : undefined
+  if (ms == null) return "Thinking"
+  const secs = Math.max(1, Math.round(ms / 1000))
+  return secs < 60
+    ? `Thought for ${secs}s`
+    : `Thought for ${Math.floor(secs / 60)}m ${secs % 60}s`
+}
+
 function AssistantMessage({
   message,
   isPending = false,
   failed = false,
   actions,
 }: {
-  message: ChatMessage
+  message: Row
   isPending?: boolean
   failed?: boolean
   actions?: ReactNode
@@ -573,7 +583,7 @@ function AssistantMessage({
                     ? "Thinking interrupted"
                     : thinking
                       ? "Thinking…"
-                      : "Thinking"}
+                      : thoughtFor(message)}
                 </TraceTitle>
               </TraceLine>
             </TraceCollapsibleTrigger>

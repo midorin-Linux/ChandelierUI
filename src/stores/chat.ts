@@ -269,10 +269,16 @@ async function requestCompletion(
       ?.context_length ?? null
   let result: MeasuredCompletion
   let reply: MessageNode | null = null
+  // Thinking time: first reasoning delta to first content delta (or the end).
+  let thinkingFrom: number | null = null
+  let thinkingTo: number | null = null
   try {
-    result = await chatCompletion(requestPayload, (delta) =>
+    result = await chatCompletion(requestPayload, (delta) => {
+      const now = performance.now()
+      if (delta.reasoning && thinkingFrom === null) thinkingFrom = now
+      if (delta.content && thinkingTo === null) thinkingTo = now
       dispatchStream({ type: "delta", attemptId: id, delta })
-    )
+    })
     if (result.error)
       fail(result.error, result.error_kind, result.metrics.http_status)
     else if (result.message) {
@@ -282,6 +288,11 @@ async function requestCompletion(
         role: "assistant",
         content: result.message.content,
         reasoning: result.message.reasoning,
+        ...(thinkingFrom !== null && {
+          reasoning_ms: Math.round(
+            Math.max((thinkingTo ?? performance.now()) - thinkingFrom, 0)
+          ),
+        }),
         created_at: Date.now(),
       }
     }

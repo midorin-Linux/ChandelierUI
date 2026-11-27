@@ -25,6 +25,9 @@ pub struct MessageNode {
     pub content: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub reasoning: String,
+    /// How long the model was thinking, from its first reasoning to its first content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_ms: Option<u32>,
     pub created_at: i64,
 }
 
