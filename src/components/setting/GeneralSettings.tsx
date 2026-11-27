@@ -3,6 +3,7 @@ import { RotateCcwIcon } from "lucide-react"
 import { EffortPicker } from "@/src/components/EffortPicker"
 import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { useTheme } from "@/src/components/ThemeProvider"
+import { isTheme, themeOptions } from "@/src/components/themeOptions"
 import { Button } from "@/src/components/ui/button"
 import {
   Field,
@@ -72,14 +73,13 @@ export function GeneralSettings() {
           </FieldContent>
           <Tabs
             value={theme}
-            onValueChange={(value) =>
-              setTheme(value as "system" | "light" | "dark")
-            }
+            onValueChange={(value) => isTheme(value) && setTheme(value)}
           >
             <TabsList aria-labelledby="theme-label">
-              {(["system", "light", "dark"] as const).map((value) => (
-                <TabsTrigger key={value} value={value} className="capitalize">
-                  {value}
+              {themeOptions.map(({ value, label, icon: Icon }) => (
+                <TabsTrigger key={value} value={value}>
+                  <Icon />
+                  {label}
                 </TabsTrigger>
               ))}
             </TabsList>

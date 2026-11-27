@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu"
 import { useTheme } from "@/src/components/ThemeProvider"
+import { isTheme, themeOptions } from "@/src/components/themeOptions"
 
 export function AppMenu({
   children,
@@ -38,17 +39,17 @@ export function AppMenu({
             <DropdownMenuRadioGroup
               value={theme}
               onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark")
-                  setTheme(value)
+                if (isTheme(value)) setTheme(value)
               }}
             >
-              {(["system", "light", "dark"] as const).map((value) => (
+              {themeOptions.map(({ value, label, icon: Icon }) => (
                 <DropdownMenuRadioItem
                   key={value}
                   value={value}
                   onSelect={(event) => event.preventDefault()}
                 >
-                  {value}
+                  <Icon />
+                  {label}
                 </DropdownMenuRadioItem>
               ))}
             </DropdownMenuRadioGroup>

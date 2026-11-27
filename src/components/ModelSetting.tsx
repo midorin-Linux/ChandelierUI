@@ -42,16 +42,16 @@ export function ModelSetting({
   const selectedEffort = useSession((s) => s.data.reasoning_effort)
   const systemPrompt = useSession((s) => s.data.system_prompt)
   return (
-    <DialogContent className="flex aspect-16/10 w-[min(80rem,calc(100%-2rem),calc((100dvh-2rem)*16/10))] flex-col overflow-hidden sm:max-w-none">
+    <DialogContent className="flex h-[min(52rem,calc(100dvh-2rem))] w-[min(76rem,calc(100%-2rem))] flex-col overflow-hidden sm:max-w-none">
       <header className="border-b px-4 py-4 pr-14">
         <DialogTitle className="text-lg font-semibold">
           Select model
         </DialogTitle>
       </header>
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
         <section
           aria-label="Models"
-          className="flex w-2/5 min-h-0 min-w-0 flex-col gap-2 border-r py-3 pr-3 pl-1"
+          className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 border-b py-3 pr-3 pl-1 md:w-2/5 md:flex-none md:border-r md:border-b-0"
         >
           <ModelBrowser
             className="flex-1"

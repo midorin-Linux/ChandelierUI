@@ -39,7 +39,14 @@ function Chat() {
   return (
     <>
       <SidebarProvider>
-        <AppSidebar onOpenSettings={() => setAppSettingsOpen(true)} />
+        <AppSidebar
+          onOpenSettings={() => {
+            // The menu opens settings at the start; shortcuts like the model
+            // dialog's "Manage providers" open a specific tab instead.
+            setSettingsTab("general")
+            setAppSettingsOpen(true)
+          }}
+        />
         <Dialog
           open={appSettingsOpen}
           onOpenChange={(open) => {

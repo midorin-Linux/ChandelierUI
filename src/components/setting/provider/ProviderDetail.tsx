@@ -111,8 +111,16 @@ export function ProviderDetail({
           autoFocus={isNew}
           onFocus={(event) => isNew && event.target.select()}
           placeholder="Untitled"
+          aria-describedby={
+            preset.name.trim() ? undefined : "provider-name-hint"
+          }
           onChange={(event) => renamePreset(preset.id, event.target.value)}
         />
+        {!preset.name.trim() && (
+          <FieldDescription id="provider-name-hint">
+            Without a name this provider is shown as &quot;Untitled&quot;.
+          </FieldDescription>
+        )}
       </Field>
       <Field>
         <FieldLabel htmlFor="provider-url">Base URL</FieldLabel>
