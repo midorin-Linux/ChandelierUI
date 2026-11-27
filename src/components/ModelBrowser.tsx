@@ -43,6 +43,7 @@ export function ModelBrowser({
   onSelect,
   groupTitle = presetLabel,
   focusSearch = false,
+  errorShownElsewhere = false,
   className,
 }: {
   presets: readonly ProviderPreset[]
@@ -52,6 +53,8 @@ export function ModelBrowser({
   groupTitle?: (preset: ProviderPreset) => string
   /** Focuses the search box on mount, for dialogs opened to pick a model. */
   focusSearch?: boolean
+  /** The connection error is already shown next to this list, so it isn't repeated. */
+  errorShownElsewhere?: boolean
   className?: string
 }) {
   const lists = useModelsStore()
@@ -237,10 +240,14 @@ export function ModelBrowser({
                   <p
                     className={cn(
                       "py-1 pr-2 pl-8 text-xs break-words",
-                      view.error ? "text-destructive" : "text-muted-foreground"
+                      view.error && !errorShownElsewhere
+                        ? "text-destructive"
+                        : "text-muted-foreground"
                     )}
                   >
-                    {view.status}
+                    {view.error && errorShownElsewhere
+                      ? "No models: see the connection error above."
+                      : view.status}
                   </p>
                 ) : (
                   <ul className="flex flex-col gap-0.5 py-1 pl-5">
