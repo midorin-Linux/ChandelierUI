@@ -11,15 +11,27 @@ import {
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso"
 import {
   ArrowDownIcon,
+  BoxIcon,
   BrainIcon,
   Check,
   ChevronLeft,
   ChevronRight,
   Copy,
+  MessageSquareIcon,
   Pencil,
+  PlusIcon,
   RefreshCw,
+  ServerIcon,
 } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/src/components/ui/empty"
 import { Textarea } from "@/src/components/ui/textarea"
 import { MarkdownRenderer } from "@/src/components/MarkdownRenderer"
 import {
@@ -46,6 +58,8 @@ import {
   useMessages,
   useSession,
 } from "@/src/stores/chat"
+import { useSettingsStore } from "@/src/stores/settings"
+import { openSettings } from "@/src/stores/settingsDialog"
 import type { ChatMessage } from "@/src/types/chat"
 import type { MessageNode } from "@/src/types/session"
 
@@ -188,12 +202,50 @@ function Conversation() {
 
 const components: Components<Row, ListContext> = {
   Header: () => <div className="h-4" />,
-  EmptyPlaceholder: () => (
-    <p className={`${column} text-sm text-muted-foreground`}>
-      Start a conversation. Chats are saved on this device.
-    </p>
-  ),
+  EmptyPlaceholder: EmptyConversation,
   Footer: ListFooter,
+}
+
+/** What a chat with no messages shows: the next step towards a first message. */
+function EmptyConversation() {
+  const hasProvider = useSettingsStore((s) => s.presets.length > 0)
+  const { selectedModel, modelsLoading } = useChatContext()
+  const [Icon, title, description] = !hasProvider
+    ? [
+        ServerIcon,
+        "Add a provider to start",
+        "Connect any OpenAI-compatible endpoint, local or cloud.",
+      ]
+    : !selectedModel && !modelsLoading
+      ? [
+          BoxIcon,
+          "Choose a model",
+          "Pick one with the model button in the message box below.",
+        ]
+      : [
+          MessageSquareIcon,
+          "Start a conversation",
+          "Chats are saved on this device. Enter sends, Shift+Enter adds a line.",
+        ]
+  return (
+    <Empty className={`${column} py-16`}>
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Icon />
+        </EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+      {!hasProvider && (
+        <EmptyContent>
+          <Button onClick={() => openSettings("provider")}>
+            <PlusIcon />
+            Add provider
+          </Button>
+        </EmptyContent>
+      )}
+    </Empty>
+  )
 }
 
 /** Status, error and retry below the messages, then room for the composer that overlays the list. */
