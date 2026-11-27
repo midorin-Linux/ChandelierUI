@@ -74,6 +74,14 @@ export function ProviderDetail({
     if (url.trim() !== preset.baseUrl) setPresetUrl(preset.id, url.trim())
   }
   const invalidUrl = url.trim() !== "" && !isHttpUrl(url.trim())
+  // Connects once typing pauses, so no Enter is needed; a half-typed URL that
+  // already parses may be fetched once, which is harmless.
+  useEffect(() => {
+    const next = url.trim()
+    if (next === preset.baseUrl || (next && !isHttpUrl(next))) return
+    const timer = setTimeout(() => setPresetUrl(preset.id, next), 800)
+    return () => clearTimeout(timer)
+  }, [url, preset.id, preset.baseUrl])
 
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -178,7 +186,7 @@ export function ProviderDetail({
           {invalidUrl
             ? "Enter a URL starting with http:// or https://."
             : !committed
-              ? "Press Enter to connect."
+              ? "Connects when you stop typing."
               : (connection ??
                 "The endpoint's /models list is loaded once a URL is entered.")}
         </FieldDescription>
