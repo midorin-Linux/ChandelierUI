@@ -53,7 +53,9 @@ function InputGroupAddon({
       data-align={align}
       className={cn(inputGroupAddonVariants({ align }), className)}
       onPointerDown={(e) => {
-        if ((e.target as HTMLElement).closest("button")) {
+        const target = e.target as HTMLElement
+        // React bubbles events out of portals, such as a dialog opened from here.
+        if (!e.currentTarget.contains(target) || target.closest("button")) {
           return
         }
         e.preventDefault()
