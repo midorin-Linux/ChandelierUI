@@ -4,6 +4,13 @@ import { ChartColumnIcon } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Progress } from "@/src/components/ui/progress"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/src/components/ui/select"
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -130,6 +137,12 @@ function Kpi({ label, value }: { label: string; value: string }) {
   )
 }
 
+/** Local date and time; the raw value if it does not parse. */
+function formatTime(iso: string) {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+}
+
 function Note({ children }: { children: ReactNode }) {
   return <p className="text-xs text-muted-foreground">{children}</p>
 }
@@ -180,28 +193,27 @@ export function Analysis() {
                 >
                   Attempt history
                 </label>
-                <select
-                  id="analysis-attempt"
-                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                <Select
                   value={selectedId === null ? "latest" : String(selected.id)}
-                  onChange={(event) =>
-                    setSelectedId(
-                      event.target.value === "latest"
-                        ? null
-                        : Number(event.target.value)
-                    )
+                  onValueChange={(value) =>
+                    setSelectedId(value === "latest" ? null : Number(value))
                   }
                 >
-                  <option value="latest">
-                    Latest completed attempt (#{latest.id})
-                  </option>
-                  {attempts.map((attempt) => (
-                    <option key={attempt.id} value={attempt.id}>
-                      #{attempt.id} · {attempt.started_at} ·{" "}
-                      {isFailed(attempt) ? "Failed" : "Succeeded"}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="analysis-attempt" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="latest">
+                      Latest completed attempt (#{latest.id})
+                    </SelectItem>
+                    {attempts.map((attempt) => (
+                      <SelectItem key={attempt.id} value={String(attempt.id)}>
+                        #{attempt.id} · {formatTime(attempt.started_at)} ·{" "}
+                        {isFailed(attempt) ? "Failed" : "Succeeded"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Note>
                   Showing the saved snapshot for attempt #{selected.id}. Editing
                   the current request does not change these measurements.
@@ -257,7 +269,7 @@ export function Analysis() {
                       ["Base URL", selected.request.base_url],
                       ["Location", location.classification],
                       ["Endpoint path", location.endpoint],
-                      ["Started at", selected.started_at],
+                      ["Started at", formatTime(selected.started_at)],
                       ["Temperature", "Provider default (not sent)"],
                       ["max_tokens", "Provider default (not sent)"],
                       ["Streaming transport", "true (SSE; usage requested)"],
