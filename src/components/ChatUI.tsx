@@ -56,6 +56,7 @@ import {
   useActiveStream,
   useBusy,
   useChatContext,
+  useChatStore,
   useError,
   useErrorCause,
   useMessages,
@@ -82,7 +83,17 @@ const reveal =
 export function ChatUI() {
   // One list per session: it opens at the bottom and keeps no scroll state from another chat.
   const activeId = useSession((s) => s.activeId)
-  return <Conversation key={activeId ?? "new"} />
+  // A new chat getting its id on the first send is the same conversation:
+  // remounting would lose that message's place at the top.
+  const firstSend = useChatStore((s) => s.sending && !s.switching)
+  const [list, setList] = useState({ id: activeId, generation: 0 })
+  if (list.id !== activeId)
+    setList({
+      id: activeId,
+      generation:
+        list.id === null && firstSend ? list.generation : list.generation + 1,
+    })
+  return <Conversation key={list.generation} />
 }
 
 function Conversation() {
@@ -100,8 +111,14 @@ function Conversation() {
   // Cleared only by scrolling up, so content growing below the view keeps it set.
   const stuck = useRef(true)
   const lastTop = useRef(0)
+  const lastHeight = useRef(0)
   const scrollTarget = useRef<string | null>(null)
   const [atBottom, setAtBottom] = useState(true)
+  // The user message just sent: it is scrolled to the top and the reply fills
+  // the screen below it. Null when the chat was opened rather than sent to.
+  const anchorId = useRef<string | null>(null)
+  const lastUserId = useRef<string | null | undefined>(undefined)
+  const rowsRef = useRef<Row[]>([])
   const context = useMemo<ListContext>(
     () => ({
       select: (id) => {
@@ -120,18 +137,78 @@ function Conversation() {
     if (index >= 0)
       list.current?.scrollToIndex({ index, align: "start", offset: -16 })
   }, [messages])
-  // Keeps the bottom in view as the reply grows, unless the user scrolled up.
-  const stick = useCallback(() => {
-    const element = scroller.current
-    if (element && stuck.current) element.scrollTop = element.scrollHeight
-  }, [])
-  // Before paint, for the DOM React just wrote; rows Virtuoso sizes afterwards are
-  // caught by `totalListHeightChanged`.
-  useLayoutEffect(stick, [stick, partialMessage, isPending, error])
   const rows = useMemo<Row[]>(
     () => (partialMessage ? [...messages, partialMessage] : messages),
     [messages, partialMessage]
   )
+  // Runs before the sticking effect below, in the same commit.
+  useLayoutEffect(() => {
+    rowsRef.current = rows
+    // A new last user message (send, edit or regenerate) becomes the anchor.
+    const tail = messages[messages.length - 1]
+    const tailUserId = tail?.role === "user" ? tail.id : null
+    if (lastUserId.current === tailUserId) return
+    // The first render is opening the chat, not sending.
+    if (lastUserId.current !== undefined && tail?.role === "user") {
+      anchorId.current = tail.id
+      // Scrolling to the bottom now puts the anchor at the top (see updateSpacer).
+      stuck.current = true
+    }
+    lastUserId.current = tailUserId
+  }, [rows, messages])
+  /**
+   * Pads the footer so the anchor can sit at the top while its reply is shorter
+   * than the screen; shrinks to nothing once the reply fills it. Also exposes
+   * the list and anchor heights, which size the thinking window.
+   */
+  const updateSpacer = useCallback(() => {
+    const element = scroller.current
+    if (!element) return
+    element.style.setProperty("--list-height", `${element.clientHeight}px`)
+    const index = anchorId.current
+      ? rowsRef.current.findIndex(
+          (row) => "id" in row && row.id === anchorId.current
+        )
+      : -1
+    const row =
+      index >= 0 ? element.querySelector(`[data-index="${index}"]`) : null
+    const footer = element.querySelector("[data-slot=list-footer]")
+    // Anchored but not in the DOM this instant (Virtuoso re-rendering): keep the
+    // last measurement rather than collapse the spacer.
+    if (index >= 0 && (!row || !footer)) return
+    let spacer = 0
+    let anchorHeight = 0
+    if (row && footer) {
+      const current =
+        parseFloat(element.style.getPropertyValue("--turn-spacer")) || 0
+      const rect = row.getBoundingClientRect()
+      // From the anchor's top to the end of the list, without the spacer.
+      // (scrollHeight can't be used: it never drops below the viewport.)
+      const below = footer.getBoundingClientRect().bottom - rect.top - current
+      // 16px: the same gap above the anchor as the list's header.
+      spacer = Math.max(0, element.clientHeight - 16 - below)
+      anchorHeight = rect.height
+    }
+    element.style.setProperty("--turn-spacer", `${spacer}px`)
+    element.style.setProperty("--anchor-height", `${anchorHeight}px`)
+  }, [])
+  // Keeps the bottom in view as the reply grows, unless the user scrolled up.
+  // With an anchor, the bottom is the anchor at the top until the reply overflows.
+  const stick = useCallback(() => {
+    updateSpacer()
+    const element = scroller.current
+    if (element && stuck.current) element.scrollTop = element.scrollHeight
+  }, [updateSpacer])
+  // Before paint, for the DOM React just wrote; rows Virtuoso sizes afterwards are
+  // caught by `totalListHeightChanged`.
+  useLayoutEffect(stick, [stick, rows, isPending, error])
+  useEffect(() => {
+    const element = scroller.current
+    if (!element) return
+    const observer = new ResizeObserver(stick)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [stick])
   return (
     <>
       <Virtuoso
@@ -152,8 +229,15 @@ function Conversation() {
         onScroll={(event) => {
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget
           if (scrollHeight - scrollTop - clientHeight < 32) stuck.current = true
-          else if (scrollTop < lastTop.current) stuck.current = false
+          // Moving up while the content shrank is the browser clamping (e.g. the
+          // spacer got smaller), not the user scrolling away.
+          else if (
+            scrollTop < lastTop.current &&
+            scrollHeight >= lastHeight.current
+          )
+            stuck.current = false
           lastTop.current = scrollTop
+          lastHeight.current = scrollHeight
         }}
         // Growth outside a delta: late highlighting, the finished reply's buttons.
         totalListHeightChanged={stick}
@@ -161,11 +245,6 @@ function Conversation() {
         atBottomThreshold={32}
         // Rows render before they scroll in, so tall replies don't pop in.
         increaseViewportBy={{ top: 800, bottom: 400 }}
-        // Jump to the user's own new message, even from above. Off otherwise: while
-        // on, Virtuoso also chases a growing last row and pulls back a user who scrolled up.
-        followOutput={
-          rows[rows.length - 1]?.role === "user" ? () => "auto" : false
-        }
         itemContent={(_, row) =>
           "id" in row ? (
             <MessageRow
@@ -278,7 +357,10 @@ function ListFooter({ context }: { context?: ListContext }) {
     />
   )
   return (
-    <div className={`${column} pb-[calc(var(--composer-height,0px)+1rem)]`}>
+    <div
+      data-slot="list-footer"
+      className={`${column} pb-[calc(var(--composer-height,0px)+1rem+var(--turn-spacer,0px))]`}
+    >
       {isPending && (
         <p role="status" className="text-sm text-muted-foreground">
           {partialMessage ? "Receiving response…" : "Waiting for the model…"}
@@ -601,13 +683,13 @@ function AssistantMessage({
               </TraceLine>
             </TraceCollapsibleTrigger>
             <TraceCollapsibleContent>
-              {/* While thinking, a short window that follows the newest text,
-                  so long reasoning never pushes the "Thinking…" line out of view. */}
+              {/* While thinking, a window filling the screen below the sent message
+                  that follows the newest text, so the "Thinking…" line stays in view. */}
               <div
                 ref={reasoningBox}
                 className={
                   thinking
-                    ? "max-h-48 overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_2rem)]"
+                    ? "max-h-[max(12rem,calc(var(--list-height,100dvh)-var(--composer-height,0px)-var(--anchor-height,0px)-7rem))] overflow-y-auto mask-[linear-gradient(to_bottom,transparent,black_2rem)]"
                     : undefined
                 }
               >
