@@ -75,6 +75,9 @@ interface ListContext {
 
 // Rows are padded, not margined: Virtuoso measures each row's own box.
 const column = "mx-auto w-full max-w-3xl border-x border-transparent px-4"
+// Copy, edit and regenerate appear on hover or keyboard focus; version arrows stay.
+const reveal =
+  "opacity-0 transition-opacity group-hover/message:opacity-100 focus-visible:opacity-100"
 
 export function ChatUI() {
   // One list per session: it opens at the bottom and keeps no scroll state from another chat.
@@ -353,7 +356,7 @@ const MessageRow = memo(function MessageRow({
     />
   )
   return (
-    <div className={`${column} pb-4`}>
+    <div className={`${column} group/message pb-4`}>
       {message.role === "assistant" ? (
         <AssistantMessage
           message={message}
@@ -364,6 +367,7 @@ const MessageRow = memo(function MessageRow({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Regenerate response"
+                className={reveal}
                 disabled={busy || !canSend}
                 onClick={() => onRegenerate(message)}
               >
@@ -494,11 +498,12 @@ function UserMessage({
       )}
       <div className="flex items-center justify-end gap-1">
         {nav}
-        <CopyButton text={message.content} />
+        <CopyButton text={message.content} className={reveal} />
         <Button
           variant="ghost"
           size="icon-sm"
           aria-label="Edit message"
+          className={reveal}
           disabled={disabled || !canEdit || draft !== null}
           onClick={() => setDraft(message.content)}
         >
@@ -509,7 +514,7 @@ function UserMessage({
   )
 }
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, className }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false)
   const timer = useRef<number>(undefined)
   useEffect(() => () => window.clearTimeout(timer.current), [])
@@ -528,6 +533,7 @@ function CopyButton({ text }: { text: string }) {
       variant="ghost"
       size="icon-sm"
       aria-label={copied ? "Copied" : "Copy message"}
+      className={copied ? undefined : className}
       onClick={() => void copy()}
     >
       {copied ? <Check size={16} /> : <Copy size={16} />}
@@ -603,7 +609,7 @@ function AssistantMessage({
       )}
       {message.content && !isPending && (
         <div className="flex items-center gap-1">
-          <CopyButton text={message.content} />
+          <CopyButton text={message.content} className={reveal} />
           {actions}
         </div>
       )}
