@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ModelSetting } from "@/src/components/ModelSetting"
 import { Button } from "@/src/components/ui/button"
 import { Dialog, DialogTrigger } from "@/src/components/ui/dialog"
@@ -15,6 +15,7 @@ import {
   sendMessage as send,
   useActiveStream,
   useBusy,
+  useChatStore,
   useChatContext,
   useSession,
 } from "@/src/stores/chat"
@@ -30,6 +31,13 @@ export function MessageBox({
   const { isPending } = useActiveStream()
   // Switching or restoring a session: sending is off but the draft is kept.
   const disabled = useBusy()
+  const switching = useChatStore((s) => s.switching)
+  const field = useRef<HTMLTextAreaElement>(null)
+  // Opening, starting or deleting a chat ends with the cursor in the composer,
+  // also for "New chat" from a chat that was never sent (its id stays null).
+  useEffect(() => {
+    if (!switching) field.current?.focus()
+  }, [switching])
   const [draft, setDraft] = useState("")
   function sendMessage() {
     if (isPending || disabled || !draft.trim()) return
@@ -57,6 +65,7 @@ export function MessageBox({
           </div>
           <InputGroup>
             <InputGroupTextarea
+              ref={field}
               placeholder={"Type a message..."}
               className="p-3"
               aria-label="Message"
