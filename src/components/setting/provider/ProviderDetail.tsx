@@ -1,12 +1,25 @@
 import { useEffect, useRef, useState } from "react"
 import {
+  ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
+  EllipsisIcon,
   LoaderCircleIcon,
   Trash2Icon,
 } from "lucide-react"
 import { ModelBrowser } from "@/src/components/ModelBrowser"
 import { Button } from "@/src/components/ui/button"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/src/components/ui/collapsible"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/src/components/ui/dropdown-menu"
 import {
   Dialog,
   DialogContent,
@@ -104,18 +117,39 @@ export function ProviderDetail({
     >
       <Field>
         <FieldLabel htmlFor="provider-name">Name</FieldLabel>
-        <Input
-          id="provider-name"
-          value={preset.name}
-          // eslint-disable-next-line jsx-a11y/no-autofocus -- a new provider is named first
-          autoFocus={isNew}
-          onFocus={(event) => isNew && event.target.select()}
-          placeholder="Untitled"
-          aria-describedby={
-            preset.name.trim() ? undefined : "provider-name-hint"
-          }
-          onChange={(event) => renamePreset(preset.id, event.target.value)}
-        />
+        <div className="flex gap-2">
+          <Input
+            id="provider-name"
+            value={preset.name}
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- a new provider is named first
+            autoFocus={isNew}
+            onFocus={(event) => isNew && event.target.select()}
+            placeholder="Untitled"
+            aria-describedby={
+              preset.name.trim() ? undefined : "provider-name-hint"
+            }
+            onChange={(event) => renamePreset(preset.id, event.target.value)}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="More actions">
+                <EllipsisIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => {
+                  setDeleteError(null)
+                  setConfirmingDelete(true)
+                }}
+              >
+                <Trash2Icon />
+                Delete provider…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         {!preset.name.trim() && (
           <FieldDescription id="provider-name-hint">
             Without a name this provider is shown as &quot;Untitled&quot;.
@@ -153,36 +187,27 @@ export function ProviderDetail({
         providerId={preset.id}
         onChanged={() => refreshModels(preset.id)}
       />
-      <div className="flex min-h-0 flex-col gap-2">
-        <h3 className="text-sm font-medium">Models</h3>
-        <ModelBrowser
-          className="max-h-96"
-          presets={[preset]}
-          groupTitle={() => "Available models"}
-          errorShownElsewhere
-        />
-      </div>
-      <div className="flex flex-col gap-2 rounded-lg border border-destructive/30 p-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h3 className="text-sm font-medium">Delete provider</h3>
-            <p className="text-sm text-muted-foreground">
-              Removes this provider and its saved API key.
-            </p>
-          </div>
+      {/* Only a reference: models are picked in the chat's model dialog. */}
+      <Collapsible className="flex min-h-0 flex-col gap-2">
+        <CollapsibleTrigger asChild>
           <Button
-            variant="destructive"
+            variant="ghost"
             size="sm"
-            onClick={() => {
-              setDeleteError(null)
-              setConfirmingDelete(true)
-            }}
+            className="w-fit px-1 [&_svg]:transition-transform data-[state=open]:[&_svg]:rotate-90"
           >
-            <Trash2Icon />
-            Delete
+            <ChevronRightIcon />
+            Models{view.models.length > 0 && ` (${view.models.length})`}
           </Button>
-        </div>
-      </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <ModelBrowser
+            className="max-h-96"
+            presets={[preset]}
+            groupTitle={() => "Available models"}
+            errorShownElsewhere
+          />
+        </CollapsibleContent>
+      </Collapsible>
       <Dialog
         open={confirmingDelete}
         onOpenChange={(open) => !deleting && setConfirmingDelete(open)}
