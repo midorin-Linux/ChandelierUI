@@ -38,7 +38,12 @@ export function MessageBox({
   useEffect(() => {
     if (!switching) field.current?.focus()
   }, [switching])
-  const [draft, setDraft] = useState("")
+  // One draft per chat; an unsaved new chat uses "new" until its first send.
+  const key = useSession((s) => s.activeId) ?? "new"
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const draft = drafts[key] ?? ""
+  const setDraft = (text: string) =>
+    setDrafts((prev) => ({ ...prev, [key]: text }))
   function sendMessage() {
     if (isPending || disabled || !draft.trim()) return
     if (send(draft)) setDraft("")
