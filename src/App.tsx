@@ -8,6 +8,7 @@ import { AppSetting } from "@/src/components/AppSetting"
 import { Dialog } from "@/src/components/ui/dialog"
 import { ThemeProvider } from "@/src/components/ThemeProvider.tsx"
 import { SidebarProvider } from "@/src/components/ui/sidebar"
+import { Toaster } from "@/src/components/ui/sonner"
 import { AppSidebar } from "@/src/components/AppSidebar"
 import { settingsWriter } from "@/src/lib/api"
 import { init, useChatContext } from "@/src/stores/chat"
@@ -20,7 +21,10 @@ function App() {
   useEffect(() => void init(), [])
   // The theme stays outside the settings gate so it applies without waiting for IPC.
   return (
-    <ThemeProvider defaultTheme="system">{loaded && <Chat />}</ThemeProvider>
+    <ThemeProvider defaultTheme="system">
+      {loaded && <Chat />}
+      <Toaster />
+    </ThemeProvider>
   )
 }
 

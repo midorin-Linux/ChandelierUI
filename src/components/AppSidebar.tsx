@@ -7,15 +7,7 @@ import {
   Trash2Icon,
 } from "lucide-react"
 import { AppMenu } from "@/src/components/AppMenu"
-import { Button } from "@/src/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/src/components/ui/dialog"
+import { toast } from "sonner"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,9 +48,39 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
   const disabled = !useCanSwitch()
   const streamingId = useStreamingSessionId()
   const [renamingId, setRenamingId] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState<SessionSummary | null>(null)
+  // Deleted but still undoable: hidden now, removed when the toast closes.
+  const [hidden, setHidden] = useState<readonly string[]>([])
   const [query, setQuery] = useState("")
-  const groups = groupSessions(sessions, query)
+  const groups = groupSessions(
+    sessions.filter((session) => !hidden.includes(session.id)),
+    query
+  )
+
+  function remove(session: SessionSummary) {
+    if (session.id === activeId) onNew()
+    setHidden((ids) => [...ids, session.id])
+    let undone = false
+    let settled = false
+    // Sonner may report one close more than once (action, dismiss, timeout).
+    const settle = () => {
+      if (settled) return
+      settled = true
+      if (!undone) onDelete(session.id)
+      setHidden((ids) => ids.filter((id) => id !== session.id))
+    }
+    toast(`Deleted “${session.title || "Untitled"}”`, {
+      description: "Its analysis data is deleted too.",
+      action: {
+        label: "Undo",
+        onClick: () => {
+          undone = true
+          settle()
+        },
+      },
+      onDismiss: settle,
+      onAutoClose: settle,
+    })
+  }
 
   function finishRename(id: string, title: string) {
     setRenamingId(null)
@@ -175,7 +197,7 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={disabled || session.id === streamingId}
-                              onSelect={() => setDeleting(session)}
+                              onSelect={() => remove(session)}
                             >
                               <Trash2Icon />
                               Delete
@@ -204,34 +226,6 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
           </SidebarGroup>
         </SidebarFooter>
       </Sidebar>
-      <Dialog
-        open={deleting !== null}
-        onOpenChange={(open) => !open && setDeleting(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete this chat?</DialogTitle>
-            <DialogDescription>
-              “{deleting?.title || "Untitled"}” and its analysis data will be
-              permanently deleted.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleting) onDelete(deleting.id)
-                setDeleting(null)
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   )
 }
