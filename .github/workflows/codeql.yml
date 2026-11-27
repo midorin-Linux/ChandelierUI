@@ -2,19 +2,13 @@ name: "CodeQL Advanced"
 
 # Analyzes JavaScript/TypeScript only on frontend changes; `actions` and `rust`
 # live in codeql-actions.yml and codeql-rust.yml with their own path filters.
+# Only pull requests are path-filtered: every push to master is analyzed so PRs
+# always have a base analysis to compare against (GitHub advises against
+# path filters on push for code scanning).
 # The weekly schedule still re-analyzes master with updated query packs.
 on:
   push:
     branches: ["master"]
-    paths:
-      - "src/**"
-      - "index.html"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - "eslint.config.ts"
-      - "vite.config.ts"
-      - "tsconfig*.json"
-      - ".github/workflows/codeql.yml"
   pull_request:
     branches: ["master"]
     paths:

@@ -1,12 +1,11 @@
 name: "CodeQL (Actions)"
 
-# Split from codeql.yml so it only runs when GitHub Actions configuration changes.
+# Split from codeql.yml so PRs only run it when GitHub Actions configuration
+# changes. Every push to master is analyzed so PRs always have a base analysis.
 # The weekly schedule still re-analyzes master with updated query packs.
 on:
   push:
     branches: ["master"]
-    paths:
-      - ".github/**"
   pull_request:
     branches: ["master"]
     paths:

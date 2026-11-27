@@ -282,7 +282,7 @@ jobs:
       # to avoid network checks and mid-cycle cache churn.
       - name: Ensure Rust toolchain
         run: |
-          if ! rustup toolchain list | grep -q '^stable.*(default)' \
+          if ! rustup toolchain list | grep -qE '^stable.*\bdefault\b' \
             || ! rustup component list --toolchain stable --installed | grep -q '^clippy'; then
             rustup toolchain install stable --profile minimal --component clippy
             rustup default stable
