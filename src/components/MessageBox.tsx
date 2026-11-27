@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { ModelSetting } from "@/src/components/ModelSetting"
-import { Button } from "@/src/components/ui/button"
+import { Badge } from "@/src/components/ui/badge"
 import { Dialog, DialogTrigger } from "@/src/components/ui/dialog"
 import { Field, FieldGroup } from "@/src/components/ui/field"
 import {
@@ -25,7 +25,7 @@ export function MessageBox({
 }: {
   onOpenProviderSettings: () => void
 }) {
-  const { selectedModel } = useChatContext()
+  const { selectedModel, providerName } = useChatContext()
   const selectedEffort = useSession((s) => s.data.reasoning_effort)
   // Cancel shows only in the chat the reply streams into.
   const { isPending } = useActiveStream()
@@ -53,21 +53,6 @@ export function MessageBox({
     <div className="w-full shrink-0 bg-background pb-4">
       <FieldGroup>
         <Field className="flex flex-col gap-1">
-          <div className="flex min-w-0">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="min-w-0 max-w-full text-sm"
-                >
-                  <span className="truncate">
-                    [{selectedEffort}] {selectedModel || "Select a model"}
-                  </span>
-                </Button>
-              </DialogTrigger>
-              <ModelSetting onOpenProviderSettings={onOpenProviderSettings} />
-            </Dialog>
-          </div>
           <InputGroup>
             <InputGroupTextarea
               ref={field}
@@ -85,10 +70,32 @@ export function MessageBox({
             />
             <InputGroupAddon
               align="block-end"
-              className="flex items-center justify-between px-4"
+              className="flex items-center justify-between gap-2 px-4"
             >
-              <div></div>
-              <div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <InputGroupButton
+                    variant="ghost"
+                    size="sm"
+                    className="min-w-0 max-w-[75%] -ml-2"
+                    aria-label={`Model: ${selectedModel || "none"}, effort ${selectedEffort}. Change`}
+                  >
+                    <span className="truncate">
+                      {selectedModel || "Select a model"}
+                    </span>
+                    {providerName && (
+                      <span className="hidden shrink-0 font-normal text-muted-foreground sm:inline">
+                        · {providerName}
+                      </span>
+                    )}
+                    <Badge variant="secondary" className="shrink-0 capitalize">
+                      {selectedEffort}
+                    </Badge>
+                  </InputGroupButton>
+                </DialogTrigger>
+                <ModelSetting onOpenProviderSettings={onOpenProviderSettings} />
+              </Dialog>
+              <div className="shrink-0">
                 {isPending ? (
                   <InputGroupButton
                     variant="destructive"
