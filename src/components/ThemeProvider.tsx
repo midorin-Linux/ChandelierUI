@@ -1,5 +1,10 @@
 import { createContext, useContext, useEffect, useState } from "react"
-import { isTheme, type Theme } from "@/src/components/themeOptions"
+import {
+  isBaseColor,
+  isTheme,
+  type BaseColor,
+  type Theme,
+} from "@/src/components/themeOptions"
 
 type ThemeProviderProps = {
   children: React.ReactNode
@@ -10,11 +15,31 @@ type ThemeProviderProps = {
 type ThemeProviderState = {
   theme: Theme
   setTheme: (theme: Theme) => void
+  baseColor: BaseColor
+  setBaseColor: (baseColor: BaseColor) => void
 }
 
 const initialState: ThemeProviderState = {
   theme: "system",
   setTheme: () => null,
+  baseColor: "simple",
+  setBaseColor: () => null,
+}
+
+const BASE_COLOR_KEY = "ui-base-color"
+
+function readStored<T>(
+  key: string,
+  isValid: (v: unknown) => v is T,
+  fallback: T
+) {
+  // An unknown stored value (or a blocked storage) falls back to the default.
+  try {
+    const saved = localStorage.getItem(key)
+    return isValid(saved) ? saved : fallback
+  } catch {
+    return fallback
+  }
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
@@ -25,15 +50,16 @@ export function ThemeProvider({
   storageKey = "vite-ui-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    // An unknown stored value (or a blocked storage) falls back to the default.
-    try {
-      const saved = localStorage.getItem(storageKey)
-      return isTheme(saved) ? saved : defaultTheme
-    } catch {
-      return defaultTheme
-    }
-  })
+  const [theme, setTheme] = useState<Theme>(() =>
+    readStored(storageKey, isTheme, defaultTheme)
+  )
+  const [baseColor, setBaseColor] = useState<BaseColor>(() =>
+    readStored(BASE_COLOR_KEY, isBaseColor, "simple")
+  )
+
+  useEffect(() => {
+    document.documentElement.dataset.baseColor = baseColor
+  }, [baseColor])
 
   useEffect(() => {
     const root = window.document.documentElement
@@ -59,6 +85,11 @@ export function ThemeProvider({
     setTheme: (theme: Theme) => {
       localStorage.setItem(storageKey, theme)
       setTheme(theme)
+    },
+    baseColor,
+    setBaseColor: (baseColor: BaseColor) => {
+      localStorage.setItem(BASE_COLOR_KEY, baseColor)
+      setBaseColor(baseColor)
     },
   }
 

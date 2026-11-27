@@ -11,3 +11,13 @@ export const themeOptions = [
 
 export const isTheme = (value: unknown): value is Theme =>
   themeOptions.some((option) => option.value === value)
+
+export type BaseColor = "simple" | "olive"
+
+export const baseColorOptions = [
+  { value: "simple", label: "Simple" },
+  { value: "olive", label: "Olive" },
+] as const satisfies readonly { value: BaseColor; label: string }[]
+
+export const isBaseColor = (value: unknown): value is BaseColor =>
+  baseColorOptions.some((option) => option.value === value)
