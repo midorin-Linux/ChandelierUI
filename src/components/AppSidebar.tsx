@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/src/components/ui/dropdown-menu"
 import { Input } from "@/src/components/ui/input"
@@ -168,6 +169,13 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                           isActive={session.id === activeId}
                           disabled={disabled}
                           onClick={() => onSelect(session.id)}
+                          onDoubleClick={() => setRenamingId(session.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "F2") {
+                              event.preventDefault()
+                              setRenamingId(session.id)
+                            }
+                          }}
                         >
                           {session.id === streamingId && (
                             <LoaderCircleIcon
@@ -194,6 +202,7 @@ export function AppSidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
                             >
                               <PencilIcon />
                               Rename
+                              <DropdownMenuShortcut>F2</DropdownMenuShortcut>
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               disabled={disabled || session.id === streamingId}
